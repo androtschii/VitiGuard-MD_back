@@ -24,7 +24,7 @@
 - [x] pr-005 — Alembic для миграций БД.
 - [x] pr-006 — Подключение расширения PostGIS в миграциях.
 - [x] pr-007 — Модель пользователей (User, Role, Auth).
-- [ ] pr-008 — Модель участка виноградника (Vineyard, полигон PostGIS).
+- [x] pr-008 — Модель участка виноградника (Vineyard, полигон PostGIS).
 - [ ] pr-009 — Модель фотодиагностики (LeafImage, DiseaseResult).
 - [ ] pr-010 — Модель спутниковых индексов (SatelliteScan, NDVI, NDRE).
 - [ ] pr-011 — Модель метеоданных и прогноза (WeatherData, DiseaseRisk).

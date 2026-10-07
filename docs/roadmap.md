@@ -18,7 +18,7 @@
 ## Спринт 1. Инфраструктура, CI/CD, база данных
 
 - [x] pr-001 — Инициализация репозитория, структура FastAPI, менеджер зависимостей (uv).
-- [ ] pr-002 — Линтер и форматтер (Ruff, Black, Mypy).
+- [x] pr-002 — Линтер и форматтер (Ruff, Black, Mypy).
 - [ ] pr-003 — Docker и Docker Compose (FastAPI, PostgreSQL, Redis).
 - [ ] pr-004 — GitHub Actions: тесты, линтинг, сборка.
 - [ ] pr-005 — Alembic для миграций БД.

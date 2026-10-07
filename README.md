@@ -26,6 +26,16 @@ API: http://127.0.0.1:8000, документация: http://127.0.0.1:8000/docs
 uv run pytest
 ```
 
+## Проверка кода
+
+```bash
+uv run ruff check .
+uv run black --check .
+uv run mypy
+```
+
+Автоисправление: `uv run ruff check --fix .` и `uv run black .`
+
 ## Структура
 
 ```

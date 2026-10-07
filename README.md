@@ -1,5 +1,7 @@
 # VitiGuard MD — backend
 
+[![CI](https://github.com/androtschii/VitiGuard-MD_back/actions/workflows/ci.yml/badge.svg)](https://github.com/androtschii/VitiGuard-MD_back/actions/workflows/ci.yml)
+
 Бэкенд системы мониторинга здоровья виноградников Республики Молдова: диагностика болезней по фото листьев, спутниковый мониторинг Sentinel-2 (NDVI/NDRE) и прогноз риска грибковых заболеваний по метеоданным.
 
 Фронтенд: [VitiGuard-MD_front](https://github.com/androtschii/VitiGuard-MD_front)
@@ -32,6 +34,7 @@ docker compose up --build
 
 ```bash
 uv run pytest
+uv run pytest --cov   # с отчётом о покрытии, минимум 85 %
 ```
 
 ## Проверка кода

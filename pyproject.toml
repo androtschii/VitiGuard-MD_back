@@ -24,6 +24,14 @@ packages = ["app"]
 testpaths = ["tests"]
 addopts = "-ra"
 
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 85
+
 [tool.ruff.lint]
 select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "PT", "ASYNC", "RUF"]
 # E501: длину строк контролирует Black; RUF001-003 срабатывают на кириллицу в строках и комментариях
@@ -47,5 +55,6 @@ dev = [
     "httpx2>=2.13.1",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
     "ruff>=0.16.10",
 ]

@@ -9,6 +9,7 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.models.diagnosis import LeafImage
+    from app.models.satellite import SatelliteScan
     from app.models.user import User
 
 
@@ -26,4 +27,7 @@ class Vineyard(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Фото остаются у владельца, если участок удалён (vineyard_id → NULL)
     leaf_images: Mapped[list["LeafImage"]] = relationship(
         back_populates="vineyard", passive_deletes=True
+    )
+    satellite_scans: Mapped[list["SatelliteScan"]] = relationship(
+        back_populates="vineyard", cascade="all, delete-orphan", passive_deletes=True
     )

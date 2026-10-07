@@ -1,22 +1,16 @@
-import enum
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, Enum, ForeignKey, Integer, String
+from sqlalchemy import CheckConstraint, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.enums import ProcessingStatus, string_enum
 
 if TYPE_CHECKING:
     from app.models.user import User
     from app.models.vineyard import Vineyard
-
-
-class DiagnosisStatus(enum.StrEnum):
-    PENDING = "pending"
-    COMPLETED = "completed"
-    FAILED = "failed"
 
 
 class LeafImage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -70,16 +64,9 @@ class DiseaseResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     model_name: Mapped[str] = mapped_column(String(100))
     model_version: Mapped[str] = mapped_column(String(50))
-    status: Mapped[DiagnosisStatus] = mapped_column(
-        Enum(
-            DiagnosisStatus,
-            name="diagnosis_status",
-            native_enum=False,
-            create_constraint=True,
-            length=20,
-            values_callable=lambda statuses: [status.value for status in statuses],
-        ),
-        server_default=DiagnosisStatus.PENDING.value,
+    status: Mapped[ProcessingStatus] = mapped_column(
+        string_enum(ProcessingStatus, "diagnosis_status"),
+        server_default=ProcessingStatus.PENDING.value,
     )
     # Строка, а не перечисление: набор классов задаёт обученная модель и он меняется
     predicted_class: Mapped[str | None] = mapped_column(String(50))

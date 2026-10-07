@@ -26,7 +26,7 @@
 - [x] pr-007 — Модель пользователей (User, Role, Auth).
 - [x] pr-008 — Модель участка виноградника (Vineyard, полигон PostGIS).
 - [x] pr-009 — Модель фотодиагностики (LeafImage, DiseaseResult).
-- [ ] pr-010 — Модель спутниковых индексов (SatelliteScan, NDVI, NDRE).
+- [x] pr-010 — Модель спутниковых индексов (SatelliteScan, NDVI, NDRE).
 - [ ] pr-011 — Модель метеоданных и прогноза (WeatherData, DiseaseRisk).
 - [ ] pr-012 — Подключение к БД через SQLAlchemy AsyncEngine.
 - [ ] pr-013 — Базовые Pydantic-схемы (DTO).

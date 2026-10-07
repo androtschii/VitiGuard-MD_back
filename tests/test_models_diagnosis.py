@@ -4,7 +4,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import DiagnosisStatus, DiseaseResult, LeafImage, User, Vineyard
+from app.models import DiseaseResult, LeafImage, ProcessingStatus, User, Vineyard
 
 pytestmark = pytest.mark.integration
 
@@ -39,7 +39,7 @@ async def test_result_defaults_to_pending(session: AsyncSession) -> None:
     await session.flush()
     await session.refresh(result)
 
-    assert result.status is DiagnosisStatus.PENDING
+    assert result.status is ProcessingStatus.PENDING
     assert result.predicted_class is None
 
 
@@ -51,7 +51,7 @@ async def test_completed_result_keeps_probabilities(session: AsyncSession) -> No
             image=image,
             model_name="efficientnet_b0",
             model_version="1",
-            status=DiagnosisStatus.COMPLETED,
+            status=ProcessingStatus.COMPLETED,
             predicted_class="downy_mildew",
             confidence=0.91,
             probabilities=probabilities,
@@ -70,11 +70,11 @@ async def test_completed_result_keeps_probabilities(session: AsyncSession) -> No
     ("fields", "constraint"),
     [
         (
-            {"status": DiagnosisStatus.COMPLETED},
+            {"status": ProcessingStatus.COMPLETED},
             "ck_disease_results_completed_has_prediction",
         ),
         (
-            {"status": DiagnosisStatus.FAILED, "confidence": 1.5},
+            {"status": ProcessingStatus.FAILED, "confidence": 1.5},
             "ck_disease_results_confidence_range",
         ),
     ],

@@ -1,5 +1,6 @@
 import os
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from docker.errors import DockerException
@@ -10,6 +11,7 @@ from app.core.config import Settings
 from app.main import create_app
 
 POSTGIS_IMAGE = "postgis/postgis:18-3.6"
+DB_INIT_SCRIPT = Path(__file__).resolve().parents[1] / "docker" / "db" / "10_postgis.sh"
 
 
 @pytest.fixture
@@ -28,7 +30,13 @@ def client(settings: Settings) -> Iterator[TestClient]:
 def database_url() -> Iterator[str]:
     """PostgreSQL с PostGIS в Docker на всю тестовую сессию."""
     try:
-        container = PostgresContainer(POSTGIS_IMAGE, driver="asyncpg").start()
+        container = (
+            PostgresContainer(POSTGIS_IMAGE, driver="asyncpg")
+            .with_volume_mapping(
+                str(DB_INIT_SCRIPT), "/docker-entrypoint-initdb.d/10_postgis.sh"
+            )
+            .start()
+        )
     except DockerException:
         # Без Docker интеграционные тесты локально пропускаются, а в CI должны падать
         if os.getenv("CI"):

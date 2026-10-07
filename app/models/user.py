@@ -8,6 +8,7 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.models.auth import RefreshToken
+    from app.models.vineyard import Vineyard
 
 
 class UserRole(enum.StrEnum):
@@ -38,4 +39,7 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
+    vineyards: Mapped[list["Vineyard"]] = relationship(
+        back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )

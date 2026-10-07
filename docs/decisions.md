@@ -42,3 +42,9 @@ Ruff — линтер, он же сортирует импорты (вместо
 - Имена файлов миграций начинаются с даты; новые миграции автоматически проходят Ruff и Black.
 - Образ `postgis/postgis` кроме `postgis` ставит `postgis_topology` и `postgis_tiger_geocoder` и добавляет их схемы в `search_path` — через него видно 36 таблиц геокодера TIGER. Миграции подключаются с `search_path=public`, а служебная таблица `spatial_ref_sys` исключена из автогенерации.
 - Интеграционные тесты поднимают PostgreSQL + PostGIS через Testcontainers. Тест на `alembic check` падает, если модели изменились, а миграции под них нет.
+
+## PostGIS через миграцию (pr-006)
+
+- Первая миграция выполняет `CREATE EXTENSION IF NOT EXISTS postgis`, откат — `DROP EXTENSION IF EXISTS postgis`. Так база разворачивается одинаково и в Docker, и на сервере, где PostGIS установлен, но не включён.
+- Стандартный init-скрипт образа `postgis/postgis` в compose и в тестах подменён пустым (`docker/db/10_postgis.sh`): иначе образ сам ставит `postgis`, `postgis_topology` и `postgis_tiger_geocoder`. Тогда тест не доказал бы, что расширение создаёт миграция, а откат упал бы, потому что от `postgis` зависят два других расширения. Ограничение `search_path=public` из pr-005 оставлено для баз, где лишние схемы уже есть.
+- В Docker миграции применяются при старте контейнера API (`alembic upgrade head`, затем uvicorn). CI после запуска стека проверяет, что в базе есть версия миграций и расширение PostGIS.

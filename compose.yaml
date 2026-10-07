@@ -6,6 +6,9 @@ services:
     env_file:
       - path: .env
         required: false
+    environment:
+      VITIGUARD_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vitiguard}:${POSTGRES_PASSWORD:-vitiguard}@db:5432/${POSTGRES_DB:-vitiguard}
+    command: sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -31,6 +34,7 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql
+      - ./docker/db/10_postgis.sh:/docker-entrypoint-initdb.d/10_postgis.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s

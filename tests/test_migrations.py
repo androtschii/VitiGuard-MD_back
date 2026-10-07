@@ -1,5 +1,4 @@
 import asyncio
-from pathlib import Path
 
 import pytest
 from alembic import command
@@ -8,8 +7,6 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 pytestmark = pytest.mark.integration
-
-ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
 
 
 def extension_version(database_url: str, name: str) -> str | None:
@@ -26,14 +23,6 @@ def extension_version(database_url: str, name: str) -> str | None:
             await engine.dispose()
 
     return asyncio.run(query())
-
-
-@pytest.fixture
-def alembic_config(database_url: str) -> Config:
-    config = Config(ALEMBIC_INI)
-    # alembic.ini читается через configparser, поэтому % в URL нужно экранировать
-    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
-    return config
 
 
 def test_upgrade_downgrade_upgrade(alembic_config: Config) -> None:

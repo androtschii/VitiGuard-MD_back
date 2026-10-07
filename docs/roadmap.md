@@ -23,7 +23,7 @@
 - [x] pr-004 — GitHub Actions: тесты, линтинг, сборка.
 - [x] pr-005 — Alembic для миграций БД.
 - [x] pr-006 — Подключение расширения PostGIS в миграциях.
-- [ ] pr-007 — Модель пользователей (User, Role, Auth).
+- [x] pr-007 — Модель пользователей (User, Role, Auth).
 - [ ] pr-008 — Модель участка виноградника (Vineyard, полигон PostGIS).
 - [ ] pr-009 — Модель фотодиагностики (LeafImage, DiseaseResult).
 - [ ] pr-010 — Модель спутниковых индексов (SatelliteScan, NDVI, NDRE).

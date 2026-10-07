@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "production"]
@@ -20,6 +21,9 @@ class Settings(BaseSettings):
     environment: Environment = "local"
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
+    database_url: PostgresDsn = PostgresDsn(
+        "postgresql+asyncpg://vitiguard:vitiguard@localhost:5432/vitiguard"
+    )
 
 
 @lru_cache

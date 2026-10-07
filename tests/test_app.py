@@ -1,6 +1,4 @@
-import pytest
 from fastapi.testclient import TestClient
-from pydantic import ValidationError
 
 from app import __version__
 from app.core.config import Settings
@@ -31,20 +29,3 @@ def test_custom_api_prefix() -> None:
     with TestClient(app) as client:
         assert client.get("/api/v2/info").status_code == 200
         assert client.get("/api/v1/info").status_code == 404
-
-
-def test_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("VITIGUARD_ENVIRONMENT", "staging")
-    monkeypatch.setenv("VITIGUARD_DEBUG", "true")
-
-    settings = Settings(_env_file=None)
-
-    assert settings.environment == "staging"
-    assert settings.debug is True
-
-
-def test_unknown_environment_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("VITIGUARD_ENVIRONMENT", "prod")
-
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None)

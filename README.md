@@ -30,7 +30,17 @@ docker compose up --build
 
 Поднимаются API, PostgreSQL 18 с PostGIS 3.6 и Redis 8. Порты и пароли задаются в `.env` (пример — `.env.example`), без него используются значения по умолчанию.
 
+## Миграции БД
+
+```bash
+docker compose up -d db
+uv run alembic upgrade head
+uv run alembic revision --autogenerate -m "описание изменений"
+```
+
 ## Тесты
+
+Интеграционные тесты (`-m integration`) поднимают PostgreSQL с PostGIS через Testcontainers, поэтому нужен запущенный Docker. Без него они пропускаются.
 
 ```bash
 uv run pytest

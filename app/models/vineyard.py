@@ -8,6 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
+    from app.models.diagnosis import LeafImage
     from app.models.user import User
 
 
@@ -22,3 +23,7 @@ class Vineyard(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     geom: Mapped[WKBElement] = mapped_column(Geometry("MULTIPOLYGON", srid=4326))
 
     owner: Mapped["User"] = relationship(back_populates="vineyards")
+    # Фото остаются у владельца, если участок удалён (vineyard_id → NULL)
+    leaf_images: Mapped[list["LeafImage"]] = relationship(
+        back_populates="vineyard", passive_deletes=True
+    )

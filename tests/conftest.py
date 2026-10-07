@@ -1,17 +1,21 @@
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from docker.errors import DockerException
 from fastapi.testclient import TestClient
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
 
 from app.core.config import Settings
 from app.main import create_app
 
+ROOT = Path(__file__).resolve().parents[1]
 POSTGIS_IMAGE = "postgis/postgis:18-3.6"
-DB_INIT_SCRIPT = Path(__file__).resolve().parents[1] / "docker" / "db" / "10_postgis.sh"
+DB_INIT_SCRIPT = ROOT / "docker" / "db" / "10_postgis.sh"
 
 
 @pytest.fixture
@@ -46,3 +50,33 @@ def database_url() -> Iterator[str]:
         yield container.get_connection_url()
     finally:
         container.stop()
+
+
+@pytest.fixture
+def alembic_config(database_url: str) -> Config:
+    config = Config(ROOT / "alembic.ini")
+    # alembic.ini читается через configparser, поэтому % в URL нужно экранировать
+    config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
+    return config
+
+
+@pytest.fixture
+def migrated_database_url(alembic_config: Config, database_url: str) -> str:
+    command.upgrade(alembic_config, "head")
+    return database_url
+
+
+@pytest.fixture
+async def session(migrated_database_url: str) -> AsyncIterator[AsyncSession]:
+    """Сессия внутри транзакции, которая откатывается после теста."""
+    engine = create_async_engine(migrated_database_url)
+    async with engine.connect() as connection:
+        transaction = await connection.begin()
+        async with AsyncSession(
+            bind=connection,
+            join_transaction_mode="create_savepoint",
+            expire_on_commit=False,
+        ) as db_session:
+            yield db_session
+        await transaction.rollback()
+    await engine.dispose()

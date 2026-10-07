@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
     database_url: PostgresDsn = PostgresDsn(
-        "postgresql+asyncpg://vitiguard:vitiguard@localhost:5432/vitiguard"
+        "postgresql+asyncpg://vitiguard:vitiguard@127.0.0.1:5432/vitiguard"
     )
 
 

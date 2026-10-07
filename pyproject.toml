@@ -27,6 +27,8 @@ packages = ["app"]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
 markers = ["integration: тесты с PostgreSQL в Docker (Testcontainers)"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 
 [tool.coverage.run]
 source = ["app"]
@@ -59,6 +61,7 @@ dev = [
     "httpx2>=2.13.1",
     "mypy>=2.4.0",
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.10",
     "testcontainers[postgres]>=4.15.0",

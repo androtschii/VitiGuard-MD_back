@@ -19,3 +19,14 @@ def string_enum[E: enum.StrEnum](enum_cls: type[E], name: str) -> Enum:
         length=20,
         values_callable=lambda members: [member.value for member in members],
     )
+
+
+class Disease(enum.StrEnum):
+    DOWNY_MILDEW = "downy_mildew"
+    POWDERY_MILDEW = "powdery_mildew"
+
+
+class RiskLevel(enum.StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"

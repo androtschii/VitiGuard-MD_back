@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.diagnosis import LeafImage
     from app.models.satellite import SatelliteScan
     from app.models.user import User
+    from app.models.weather import DiseaseRisk, WeatherData
 
 
 class Vineyard(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -29,5 +30,11 @@ class Vineyard(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="vineyard", passive_deletes=True
     )
     satellite_scans: Mapped[list["SatelliteScan"]] = relationship(
+        back_populates="vineyard", cascade="all, delete-orphan", passive_deletes=True
+    )
+    weather: Mapped[list["WeatherData"]] = relationship(
+        back_populates="vineyard", cascade="all, delete-orphan", passive_deletes=True
+    )
+    disease_risks: Mapped[list["DiseaseRisk"]] = relationship(
         back_populates="vineyard", cascade="all, delete-orphan", passive_deletes=True
     )

@@ -20,6 +20,14 @@ uv run uvicorn app.main:app --reload
 
 API: http://127.0.0.1:8000, документация: http://127.0.0.1:8000/docs
 
+## Запуск в Docker
+
+```bash
+docker compose up --build
+```
+
+Поднимаются API, PostgreSQL 18 с PostGIS 3.6 и Redis 8. Порты и пароли задаются в `.env` (пример — `.env.example`), без него используются значения по умолчанию.
+
 ## Тесты
 
 ```bash

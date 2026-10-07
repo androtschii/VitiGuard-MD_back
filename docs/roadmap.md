@@ -19,7 +19,7 @@
 
 - [x] pr-001 — Инициализация репозитория, структура FastAPI, менеджер зависимостей (uv).
 - [x] pr-002 — Линтер и форматтер (Ruff, Black, Mypy).
-- [ ] pr-003 — Docker и Docker Compose (FastAPI, PostgreSQL, Redis).
+- [x] pr-003 — Docker и Docker Compose (FastAPI, PostgreSQL, Redis).
 - [ ] pr-004 — GitHub Actions: тесты, линтинг, сборка.
 - [ ] pr-005 — Alembic для миграций БД.
 - [ ] pr-006 — Подключение расширения PostGIS в миграциях.

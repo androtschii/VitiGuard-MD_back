@@ -8,6 +8,7 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.models.auth import RefreshToken
+    from app.models.diagnosis import LeafImage
     from app.models.vineyard import Vineyard
 
 
@@ -41,5 +42,8 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
     vineyards: Mapped[list["Vineyard"]] = relationship(
+        back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
+    )
+    leaf_images: Mapped[list["LeafImage"]] = relationship(
         back_populates="owner", cascade="all, delete-orphan", passive_deletes=True
     )

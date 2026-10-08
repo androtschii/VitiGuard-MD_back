@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Annotated
 
 from fastapi import Depends, Query, Request, Security
@@ -6,9 +6,9 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
-from app.core.errors import UnauthorizedError
+from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.tokens import TokenType, decode_token
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.repositories.user import UserRepository
 from app.schemas.pagination import PageParams
 
@@ -66,3 +66,26 @@ async def get_current_user(
 
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
+
+
+def require_roles(*roles: UserRole) -> Callable[[User], Awaitable[User]]:
+    """Зависимость: пользователь вошёл и его роль — одна из перечисленных.
+
+    Роли перечисляются явно, без «иерархии»: по эндпоинту сразу видно, кому он
+    открыт, а новая роль не получит чужих прав случайно."""
+    allowed = frozenset(roles)
+
+    async def check_role(user: CurrentUserDep) -> User:
+        if user.role not in allowed:
+            # 403, а не 401: пользователь известен, повторный вход не поможет
+            raise ForbiddenError("Недостаточно прав")
+        return user
+
+    return check_role
+
+
+# Агроном подтверждает диагнозы и даёт рекомендации; администратор может всё то же
+AgronomistDep = Annotated[
+    User, Depends(require_roles(UserRole.AGRONOMIST, UserRole.ADMIN))
+]
+AdminDep = Annotated[User, Depends(require_roles(UserRole.ADMIN))]

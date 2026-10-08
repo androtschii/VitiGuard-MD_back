@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import PostgresDsn
+from pydantic import Field, PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "production"]
@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     database_url: PostgresDsn = PostgresDsn(
         "postgresql+asyncpg://vitiguard:vitiguard@127.0.0.1:5432/vitiguard"
     )
+    # Пул соединений: постоянных соединений pool_size, при пиках ещё до max_overflow
+    database_pool_size: int = Field(default=10, ge=1)
+    database_max_overflow: int = Field(default=10, ge=0)
+    # Сколько секунд запрос ждёт свободное соединение, прежде чем получить ошибку
+    database_pool_timeout: float = Field(default=30, gt=0)
 
 
 @lru_cache

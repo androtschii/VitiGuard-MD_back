@@ -1,13 +1,18 @@
 name: vitiguard
 
+# Общие настройки API и воркера: один образ, одни и те же адреса базы и Redis
+x-app-environment: &app-environment
+  VITIGUARD_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vitiguard}:${POSTGRES_PASSWORD:-vitiguard}@db:5432/${POSTGRES_DB:-vitiguard}
+  VITIGUARD_CELERY_BROKER_URL: redis://redis:6379/0
+  VITIGUARD_CELERY_RESULT_BACKEND: redis://redis:6379/1
+
 services:
   api:
     build: .
     env_file:
       - path: .env
         required: false
-    environment:
-      VITIGUARD_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vitiguard}:${POSTGRES_PASSWORD:-vitiguard}@db:5432/${POSTGRES_DB:-vitiguard}
+    environment: *app-environment
     command: sh -c "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "${API_PORT:-8000}:8000"
@@ -23,6 +28,26 @@ services:
       retries: 5
       start_period: 10s
       start_interval: 1s
+
+  worker:
+    build: .
+    env_file:
+      - path: .env
+        required: false
+    environment: *app-environment
+    command: celery -A app.worker.celery_app worker --loglevel=info --concurrency=${CELERY_CONCURRENCY:-2}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker.celery_app inspect ping -d celery@$$HOSTNAME --timeout 5"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+      start_interval: 2s
 
   db:
     image: postgis/postgis:18-3.6

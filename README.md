@@ -28,7 +28,17 @@ API: http://127.0.0.1:8000, документация: http://127.0.0.1:8000/docs
 docker compose up --build
 ```
 
-Поднимаются API, PostgreSQL 18 с PostGIS 3.6 и Redis 8. Миграции применяются автоматически при старте API. Порты и пароли задаются в `.env` (пример — `.env.example`), без него используются значения по умолчанию.
+Поднимаются API, воркер Celery, PostgreSQL 18 с PostGIS 3.6 и Redis 8. Миграции применяются автоматически при старте API. Порты и пароли задаются в `.env` (пример — `.env.example`), без него используются значения по умолчанию.
+
+## Фоновые задачи (Celery)
+
+Тяжёлая работа (нейросеть, растры, прогнозы) выполняется воркером, а не в запросе API. Redis хранит и очередь, и результаты. Воркер запускается вместе с остальными сервисами; проверить всю цепочку «API → Redis → воркер → API»:
+
+```bash
+docker compose exec api python -c "from app.worker.celery_app import celery_app; print(celery_app.send_task('system.ping').get(timeout=15))"
+```
+
+Воркер без Docker: `uv run celery -A app.worker.celery_app worker --loglevel=info`. В Windows добавьте `--pool=solo`: многопроцессный пул Celery там не работает. Новые задачи кладутся в `app/tasks/`, а их модули — в `TASK_MODULES` (`app/worker/celery_app.py`).
 
 ## Миграции БД
 
@@ -40,7 +50,7 @@ uv run alembic revision --autogenerate -m "описание изменений"
 
 ## Тесты
 
-Интеграционные тесты (`-m integration`) поднимают PostgreSQL с PostGIS через Testcontainers, поэтому нужен запущенный Docker. Без него они пропускаются.
+Интеграционные тесты (`-m integration`) поднимают PostgreSQL с PostGIS и Redis через Testcontainers, поэтому нужен запущенный Docker. Без него они пропускаются.
 
 ```bash
 uv run pytest
@@ -65,6 +75,8 @@ app/
   core/config.py   настройки (переменные окружения VITIGUARD_*)
   api/             роутеры и зависимости
   schemas/         Pydantic-схемы
+  worker/          приложение Celery
+  tasks/           фоновые задачи
 tests/
 docs/
   roadmap.md       план работ

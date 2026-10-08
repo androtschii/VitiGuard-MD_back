@@ -31,7 +31,7 @@
 - [x] pr-012 — Подключение к БД через SQLAlchemy AsyncEngine.
 - [x] pr-013 — Базовые Pydantic-схемы (DTO).
 - [x] pr-014 — Базовый CRUD / Repository Pattern.
-- [ ] pr-015 — Celery с брокером Redis.
+- [x] pr-015 — Celery с брокером Redis.
 
 ## Спринт 2. Аутентификация, авторизация, пользователи
 

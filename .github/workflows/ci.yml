@@ -44,6 +44,8 @@ jobs:
         run: |
           docker compose exec -T db psql -U vitiguard -d vitiguard -tAc "SELECT version_num FROM alembic_version" | grep .
           docker compose exec -T db psql -U vitiguard -d vitiguard -tAc "SELECT extversion FROM pg_extension WHERE extname = 'postgis'" | grep .
+      - name: Воркер Celery выполняет задачи
+        run: docker compose exec -T api python -c "from app.worker.celery_app import celery_app; print(celery_app.send_task('system.ping').get(timeout=15))" | grep pong
       - if: failure()
         run: docker compose logs
       - if: always()

@@ -1,5 +1,6 @@
+import asyncio
 import os
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ from alembic import command
 from alembic.config import Config
 from docker.errors import DockerException
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
 from testcontainers.community.redis import RedisContainer
@@ -98,3 +100,36 @@ async def session(migrated_database_url: str) -> AsyncIterator[AsyncSession]:
             yield db_session
         await transaction.rollback()
     await engine.dispose()
+
+
+async def _run_sql(url: str, statement: str) -> list[tuple[object, ...]]:
+    engine = create_async_engine(url)
+    try:
+        async with engine.begin() as connection:
+            result = await connection.execute(text(statement))
+            return [tuple(row) for row in result] if result.returns_rows else []
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
+def run_sql(migrated_database_url: str) -> Callable[[str], list[tuple[object, ...]]]:
+    """Выполняет SQL в тестовой БД: смотреть, что осталось в таблицах после запроса."""
+    return lambda statement: asyncio.run(_run_sql(migrated_database_url, statement))
+
+
+@pytest.fixture
+def api_client(
+    migrated_database_url: str,
+    run_sql: Callable[[str], list[tuple[object, ...]]],
+) -> Iterator[TestClient]:
+    """Приложение с настоящей БД. Запросы фиксируют изменения, поэтому после
+    каждого теста таблица пользователей очищается (вместе со связанными данными)."""
+    settings = Settings(
+        _env_file=None,
+        environment="test",
+        database_url=migrated_database_url,  # type: ignore[arg-type]
+    )
+    with TestClient(create_app(settings)) as client:
+        yield client
+    run_sql("TRUNCATE users CASCADE")

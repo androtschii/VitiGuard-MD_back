@@ -1,7 +1,7 @@
 import enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Enum, String, text
+from sqlalchemy import CheckConstraint, Enum, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -20,6 +20,8 @@ class UserRole(enum.StrEnum):
 
 class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "users"
+    # Приложение приводит email к нижнему регистру, а база не даёт обойти это
+    __table_args__ = (CheckConstraint("email = lower(email)", name="email_lowercase"),)
 
     email: Mapped[str] = mapped_column(String(320), unique=True)
     hashed_password: Mapped[str] = mapped_column(String(255))

@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, EmailStr, Field, StringConstraints
 
-from app.schemas.base import RequestSchema
+from app.schemas.base import RequestSchema, ResponseSchema
 
 MIN_PASSWORD_LENGTH = 8
 # Argon2 принимает пароль любой длины, но пароль в мегабайты был бы дешёвым
@@ -39,6 +39,26 @@ Password = Annotated[
     ),
     AfterValidator(check_password_strength),
 ]
+
+
+class LoginRequest(RequestSchema):
+    email: Email
+    # При входе правила сложности не проверяются: пароль мог быть задан по
+    # прежним правилам, а неверный пароль всё равно не пройдёт проверку хэша
+    password: Annotated[
+        str,
+        StringConstraints(
+            min_length=1, max_length=MAX_PASSWORD_LENGTH, strip_whitespace=False
+        ),
+    ]
+
+
+class TokenResponse(ResponseSchema):
+    """Access-токен. Refresh-токен в тело не попадает: он приходит в HttpOnly-cookie,
+    и скрипт на странице не может его прочитать."""
+
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
 
 
 class RegisterRequest(RequestSchema):

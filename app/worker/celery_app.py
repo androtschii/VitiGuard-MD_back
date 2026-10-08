@@ -4,7 +4,7 @@ from app.core.config import Settings, get_settings
 
 # Модули с задачами; новые задачи (диагностика, спутниковые индексы, прогнозы)
 # добавляются сюда
-TASK_MODULES = ["app.tasks.system"]
+TASK_MODULES = ["app.tasks.mail", "app.tasks.system"]
 
 
 def create_celery(settings: Settings) -> Celery:

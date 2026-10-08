@@ -68,3 +68,12 @@ class RegisterRequest(RequestSchema):
     # Роль администратора назначает только администратор, при регистрации её
     # выбрать нельзя
     role: Literal["user", "agronomist"] = "user"
+
+
+class PasswordResetRequest(RequestSchema):
+    email: Email
+
+
+class PasswordResetConfirm(RequestSchema):
+    token: str = Field(min_length=1, max_length=200)
+    new_password: Password

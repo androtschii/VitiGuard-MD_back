@@ -23,6 +23,10 @@ class NotFoundError(AppError):
     status_code = 404
 
 
+class BadRequestError(AppError):
+    status_code = 400
+
+
 class ConflictError(AppError):
     status_code = 409
 

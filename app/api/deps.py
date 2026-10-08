@@ -11,6 +11,7 @@ from app.core.tokens import TokenType, decode_token
 from app.models.user import User, UserRole
 from app.repositories.user import UserRepository
 from app.schemas.pagination import PageParams
+from app.tasks.mail import send_password_reset_email
 
 
 def get_app_settings(request: Request) -> Settings:
@@ -89,3 +90,17 @@ AgronomistDep = Annotated[
     User, Depends(require_roles(UserRole.AGRONOMIST, UserRole.ADMIN))
 ]
 AdminDep = Annotated[User, Depends(require_roles(UserRole.ADMIN))]
+
+
+def send_reset_email_in_background(to: str, reset_url: str) -> None:
+    # Письмо отправляет воркер Celery: ответ API не ждёт почтовый сервер
+    send_password_reset_email.delay(to, reset_url)
+
+
+def get_reset_mailer() -> Callable[[str, str], None]:
+    """Способ отправки письма со ссылкой сброса. В тестах подменяется через
+    dependency_overrides, чтобы не нужен был Redis."""
+    return send_reset_email_in_background
+
+
+ResetMailerDep = Annotated[Callable[[str, str], None], Depends(get_reset_mailer)]

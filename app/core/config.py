@@ -52,6 +52,18 @@ class Settings(BaseSettings):
     # Refresh-cookie уходит только по HTTPS. Отключать — лишь для тестов по http://
     refresh_cookie_secure: bool = True
 
+    # Сброс пароля: ссылка из письма ведёт на страницу фронтенда и действует час
+    frontend_url: str = "http://127.0.0.1:5173"
+    password_reset_ttl_minutes: int = Field(default=60, gt=0)
+    # Почта (SMTP). По умолчанию — Mailpit из compose: письма видны в его
+    # веб-интерфейсе и никуда не уходят
+    smtp_host: str = "127.0.0.1"
+    smtp_port: int = Field(default=1025, gt=0)
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_starttls: bool = False
+    mail_from: str = "VitiGuard MD <no-reply@vitiguard.md>"
+
     @model_validator(mode="after")
     def check_secret_key(self) -> Self:
         if self.environment in ("local", "test"):

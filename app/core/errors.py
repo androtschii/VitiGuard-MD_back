@@ -27,6 +27,12 @@ class ConflictError(AppError):
     status_code = 409
 
 
+class ForbiddenError(AppError):
+    """Пользователь известен, но действие ему запрещено."""
+
+    status_code = 403
+
+
 class UnauthorizedError(AppError):
     """Нет действительных учётных данных: токен отсутствует, подделан или просрочен."""
 

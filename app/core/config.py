@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     # сам. Refresh-токен живёт долго, но хранится в БД и отзывается
     access_token_ttl_minutes: int = Field(default=15, gt=0)
     refresh_token_ttl_days: int = Field(default=30, gt=0)
+    # Refresh-cookie уходит только по HTTPS. Отключать — лишь для тестов по http://
+    refresh_cookie_secure: bool = True
 
     @model_validator(mode="after")
     def check_secret_key(self) -> Self:

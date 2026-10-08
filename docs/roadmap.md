@@ -38,7 +38,7 @@
 - [x] pr-016 — Хэширование паролей (Argon2 / Passlib).
 - [x] pr-017 — JWT: access- и refresh-токены.
 - [x] pr-018 — Регистрация `/auth/register`.
-- [ ] pr-019 — Вход `/auth/login`.
+- [x] pr-019 — Вход `/auth/login`.
 - [ ] pr-020 — Обновление токена `/auth/refresh`.
 - [ ] pr-021 — Middleware аутентификации и зависимости безопасности FastAPI (Depends, Security).
 - [ ] pr-022 — Ролевая модель доступа (RBAC: Admin, Agronomist, User).

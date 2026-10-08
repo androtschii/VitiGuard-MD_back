@@ -29,7 +29,7 @@
 - [x] pr-010 — Модель спутниковых индексов (SatelliteScan, NDVI, NDRE).
 - [x] pr-011 — Модель метеоданных и прогноза (WeatherData, DiseaseRisk).
 - [x] pr-012 — Подключение к БД через SQLAlchemy AsyncEngine.
-- [ ] pr-013 — Базовые Pydantic-схемы (DTO).
+- [x] pr-013 — Базовые Pydantic-схемы (DTO).
 - [ ] pr-014 — Базовый CRUD / Repository Pattern.
 - [ ] pr-015 — Celery с брокером Redis.
 

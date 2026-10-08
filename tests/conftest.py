@@ -9,12 +9,14 @@ from docker.errors import DockerException
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
+from testcontainers.community.redis import RedisContainer
 
 from app.core.config import Settings
 from app.main import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
 POSTGIS_IMAGE = "postgis/postgis:18-3.6"
+REDIS_IMAGE = "redis:8-alpine"
 DB_INIT_SCRIPT = ROOT / "docker" / "db" / "10_postgis.sh"
 
 
@@ -48,6 +50,22 @@ def database_url() -> Iterator[str]:
         pytest.skip("Docker недоступен")
     try:
         yield container.get_connection_url()
+    finally:
+        container.stop()
+
+
+@pytest.fixture(scope="session")
+def redis_url() -> Iterator[str]:
+    """Redis в Docker на всю тестовую сессию (без номера базы в конце)."""
+    try:
+        container = RedisContainer(REDIS_IMAGE).start()
+    except DockerException:
+        if os.getenv("CI"):
+            raise
+        pytest.skip("Docker недоступен")
+    try:
+        host = container.get_container_host_ip()
+        yield f"redis://{host}:{container.get_exposed_port(6379)}"
     finally:
         container.stop()
 

@@ -1,10 +1,12 @@
+import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.errors import ForbiddenError, UnauthorizedError
+from app.core.errors import BadRequestError, ForbiddenError, UnauthorizedError
 from app.core.security import ahash_password, averify_and_upgrade
 from app.core.tokens import (
     IssuedToken,
@@ -15,14 +17,23 @@ from app.core.tokens import (
     hash_token,
 )
 from app.models.user import User, UserRole
-from app.repositories.auth import RefreshTokenRepository
+from app.repositories.auth import PasswordResetTokenRepository, RefreshTokenRepository
 from app.repositories.user import UserRepository
-from app.schemas.auth import LoginRequest, RegisterRequest
+from app.schemas.auth import (
+    LoginRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    RegisterRequest,
+)
 
 # Одно сообщение и для неизвестного email, и для неверного пароля: иначе по ответу
 # можно проверять, зарегистрирован ли адрес
 INVALID_CREDENTIALS = "Неверный email или пароль"
 INVALID_SESSION = "Сессия недействительна, войдите заново"
+INVALID_RESET_LINK = "Ссылка недействительна или устарела, запросите новую"
+
+# Отправка письма со ссылкой: (email, ссылка). В приложении ставит задачу Celery
+ResetMailer = Callable[[str, str], None]
 
 
 @dataclass(frozen=True)
@@ -133,3 +144,52 @@ async def _issue_tokens(
         expires_at=refresh.expires_at,
     )
     return AuthSession(access=access, refresh=refresh)
+
+
+async def request_password_reset(
+    session: AsyncSession,
+    data: PasswordResetRequest,
+    settings: Settings,
+    send_mail: ResetMailer,
+) -> None:
+    """Отправляет ссылку для сброса пароля, если такой активный пользователь есть.
+
+    Вызывающему ничего не сообщается: ответ одинаков для любого адреса, иначе
+    форму можно было бы использовать для проверки, зарегистрирован ли email."""
+    user = await UserRepository(session).get_by_email(data.email)
+    if user is None or not user.is_active:
+        return
+    now = datetime.now(UTC)
+    tokens = PasswordResetTokenRepository(session)
+    # Действует только последняя ссылка: старые письма больше не помогут
+    await tokens.use_all_for_user(user.id, now)
+    token = secrets.token_urlsafe(32)
+    await tokens.create(
+        user_id=user.id,
+        token_hash=hash_token(token),
+        expires_at=now + timedelta(minutes=settings.password_reset_ttl_minutes),
+    )
+    await session.commit()
+    send_mail(user.email, f"{settings.frontend_url}/reset-password?token={token}")
+
+
+async def confirm_password_reset(
+    session: AsyncSession, data: PasswordResetConfirm
+) -> None:
+    """Задаёт новый пароль по ключу из письма. Ключ одноразовый; после смены
+    пароля пользователь выходит на всех устройствах — если пароль меняли из-за
+    взлома, чужие сессии тоже закрываются."""
+    tokens = PasswordResetTokenRepository(session)
+    stored = await tokens.get_by_hash_for_update(hash_token(data.token))
+    now = datetime.now(UTC)
+    if stored is None or stored.used_at is not None or stored.expires_at <= now:
+        raise BadRequestError(INVALID_RESET_LINK)
+    users = UserRepository(session)
+    user = await users.get(stored.user_id)
+    if user is None or not user.is_active:
+        raise BadRequestError(INVALID_RESET_LINK)
+
+    await users.update(user, hashed_password=await ahash_password(data.new_password))
+    await tokens.use_all_for_user(user.id, now)
+    await RefreshTokenRepository(session).revoke_all_for_user(user.id, now)
+    await session.commit()

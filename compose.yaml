@@ -5,6 +5,8 @@ x-app-environment: &app-environment
   VITIGUARD_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vitiguard}:${POSTGRES_PASSWORD:-vitiguard}@db:5432/${POSTGRES_DB:-vitiguard}
   VITIGUARD_CELERY_BROKER_URL: redis://redis:6379/0
   VITIGUARD_CELERY_RESULT_BACKEND: redis://redis:6379/1
+  VITIGUARD_SMTP_HOST: mailpit
+  VITIGUARD_SMTP_PORT: 1025
 
 services:
   api:
@@ -77,6 +79,14 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+
+  # Почтовый сервер для разработки: письма не уходят наружу, а видны в
+  # веб-интерфейсе на http://127.0.0.1:8025
+  mailpit:
+    image: axllent/mailpit:v1.29
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025"
 
 volumes:
   pgdata:

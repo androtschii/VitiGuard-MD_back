@@ -1,4 +1,4 @@
-from app.models.auth import RefreshToken
+from app.models.auth import PasswordResetToken, RefreshToken
 from app.models.diagnosis import DiseaseResult, LeafImage
 from app.models.enums import Disease, ProcessingStatus, RiskLevel
 from app.models.satellite import IndexType, SatelliteScan, VegetationIndex
@@ -12,6 +12,7 @@ __all__ = [
     "DiseaseRisk",
     "IndexType",
     "LeafImage",
+    "PasswordResetToken",
     "ProcessingStatus",
     "RefreshToken",
     "RiskLevel",

@@ -2,13 +2,26 @@ from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Response, status
 
-from app.api.deps import SessionDep, SettingsDep
+from app.api.deps import ResetMailerDep, SessionDep, SettingsDep
 from app.core.config import Settings
 from app.core.tokens import IssuedToken
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import (
+    LoginRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
+    RegisterRequest,
+    TokenResponse,
+)
 from app.schemas.errors import ErrorResponse
 from app.schemas.user import UserRead
-from app.services.auth import login, logout, refresh_session, register_user
+from app.services.auth import (
+    confirm_password_reset,
+    login,
+    logout,
+    refresh_session,
+    register_user,
+    request_password_reset,
+)
 
 REFRESH_COOKIE = "refresh_token"
 
@@ -106,3 +119,32 @@ async def log_out(
 ) -> None:
     await logout(session, refresh_token)
     delete_refresh_cookie(response, settings)
+
+
+@router.post(
+    "/password-reset",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Запрос ссылки для сброса пароля",
+)
+async def password_reset(
+    data: PasswordResetRequest,
+    session: SessionDep,
+    settings: SettingsDep,
+    send_mail: ResetMailerDep,
+) -> Response:
+    # 202 с пустым телом для любого адреса: письмо уходит, только если
+    # пользователь существует
+    await request_password_reset(session, data, settings, send_mail)
+    return Response(status_code=status.HTTP_202_ACCEPTED)
+
+
+@router.post(
+    "/password-reset/confirm",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Новый пароль по ссылке из письма",
+    responses={status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse}},
+)
+async def password_reset_confirm(
+    data: PasswordResetConfirm, session: SessionDep
+) -> None:
+    await confirm_password_reset(session, data)

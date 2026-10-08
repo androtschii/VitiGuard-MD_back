@@ -43,7 +43,7 @@
 - [x] pr-021 — Middleware аутентификации и зависимости безопасности FastAPI (Depends, Security).
 - [x] pr-022 — Ролевая модель доступа (RBAC: Admin, Agronomist, User).
 - [x] pr-023 — Профиль пользователя `/users/me`.
-- [ ] pr-024 — Сброс пароля по email (SMTP / SendGrid).
+- [x] pr-024 — Сброс пароля по email (SMTP / SendGrid).
 - [ ] pr-025 — Юнит-тесты авторизации и аутентификации.
 
 ## Спринт 3. Виноградники и ГИС (PostGIS)

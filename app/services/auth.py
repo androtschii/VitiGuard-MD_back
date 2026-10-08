@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import ahash_password
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.repositories.user import UserRepository
 from app.schemas.auth import RegisterRequest
 
@@ -17,7 +17,7 @@ async def register_user(session: AsyncSession, data: RegisterRequest) -> User:
         email=data.email,
         hashed_password=hashed_password,
         full_name=data.full_name,
-        role=data.role,
+        role=UserRole(data.role),
     )
     # Транзакцию фиксирует сервис, которому принадлежит операция (репозиторий
     # только отправляет изменения в базу)

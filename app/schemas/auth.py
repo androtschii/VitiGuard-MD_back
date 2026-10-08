@@ -3,7 +3,6 @@ from typing import Annotated, Literal
 
 from pydantic import AfterValidator, EmailStr, Field, StringConstraints
 
-from app.models.user import UserRole
 from app.schemas.base import RequestSchema
 
 MIN_PASSWORD_LENGTH = 8
@@ -48,4 +47,4 @@ class RegisterRequest(RequestSchema):
     full_name: str = Field(min_length=2, max_length=255)
     # Роль администратора назначает только администратор, при регистрации её
     # выбрать нельзя
-    role: Literal[UserRole.USER, UserRole.AGRONOMIST] = UserRole.USER
+    role: Literal["user", "agronomist"] = "user"

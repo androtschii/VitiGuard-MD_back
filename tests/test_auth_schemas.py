@@ -3,7 +3,6 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from app.models.user import UserRole
 from app.schemas.auth import RegisterRequest
 
 
@@ -18,16 +17,16 @@ def make(**overrides: Any) -> RegisterRequest:
 
 
 def test_valid_request_defaults_to_user_role() -> None:
-    assert make().role is UserRole.USER
+    assert make().role == "user"
 
 
 def test_agronomist_can_be_chosen() -> None:
-    assert make(role="agronomist").role is UserRole.AGRONOMIST
+    assert make(role="agronomist").role == "agronomist"
 
 
 @pytest.mark.parametrize("role", ["admin", "superuser", ""])
 def test_admin_and_unknown_roles_cannot_be_chosen(role: str) -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValidationError, match="'user' or 'agronomist'"):
         make(role=role)
 
 

@@ -8,6 +8,8 @@ DATABASE_URL = "postgresql+asyncpg://user:secret@db:5432/vitiguard"
 
 def test_settings_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("VITIGUARD_ENVIRONMENT", "staging")
+    # В staging нужен собственный секретный ключ
+    monkeypatch.setenv("VITIGUARD_SECRET_KEY", "k" * 40)
     monkeypatch.setenv("VITIGUARD_DEBUG", "true")
     monkeypatch.setenv("VITIGUARD_DATABASE_URL", DATABASE_URL)
 

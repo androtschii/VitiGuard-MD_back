@@ -1,10 +1,15 @@
 from functools import lru_cache
 from typing import Literal, Self
 
-from pydantic import Field, PostgresDsn, RedisDsn, model_validator
+from pydantic import Field, PostgresDsn, RedisDsn, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "production"]
+
+# Ключ подписи для локальной разработки и тестов; значение публично, поэтому в
+# staging и production оно запрещено
+DEV_SECRET_KEY = "dev-only-insecure-secret-key-do-not-use-in-production"
+MIN_SECRET_KEY_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -36,6 +41,26 @@ class Settings(BaseSettings):
     # останавливает процесс; значения в секундах
     celery_task_soft_time_limit: int = Field(default=300, gt=0)
     celery_task_time_limit: int = Field(default=330, gt=0)
+
+    # Ключ подписи JWT (HS256): тот, кто его знает, может выписать токен любому
+    # пользователю. Задаётся в окружении: python -c "import secrets; print(secrets.token_urlsafe(48))"
+    secret_key: SecretStr = SecretStr(DEV_SECRET_KEY)
+    # Access-токен живёт недолго: его нельзя отозвать, а украденный перестаёт работать
+    # сам. Refresh-токен живёт долго, но хранится в БД и отзывается
+    access_token_ttl_minutes: int = Field(default=15, gt=0)
+    refresh_token_ttl_days: int = Field(default=30, gt=0)
+
+    @model_validator(mode="after")
+    def check_secret_key(self) -> Self:
+        if self.environment in ("local", "test"):
+            return self
+        secret = self.secret_key.get_secret_value()
+        if secret == DEV_SECRET_KEY or len(secret) < MIN_SECRET_KEY_LENGTH:
+            raise ValueError(
+                f"В окружении {self.environment} нужен собственный secret_key "
+                f"не короче {MIN_SECRET_KEY_LENGTH} символов"
+            )
+        return self
 
     @model_validator(mode="after")
     def check_time_limits(self) -> Self:

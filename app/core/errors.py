@@ -1,6 +1,7 @@
 from typing import ClassVar
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.schemas.errors import ErrorResponse
@@ -44,5 +45,18 @@ async def handle_app_error(_: Request, error: Exception) -> JSONResponse:
     )
 
 
+async def handle_validation_error(_: Request, error: Exception) -> JSONResponse:
+    """Ответ 422 без введённых значений. Стандартный ответ FastAPI возвращает поле
+    input с тем, что прислал клиент: для неверного пароля это сам пароль, и он
+    попал бы в тело ответа, прокси и логи."""
+    assert isinstance(error, RequestValidationError)
+    errors = [
+        {"loc": item["loc"], "msg": item["msg"], "type": item["type"]}
+        for item in error.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": errors})
+
+
 def register_error_handlers(application: FastAPI) -> None:
     application.add_exception_handler(AppError, handle_app_error)
+    application.add_exception_handler(RequestValidationError, handle_validation_error)

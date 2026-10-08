@@ -58,3 +58,10 @@ async def test_refresh_tokens_deleted_with_user(session: AsyncSession) -> None:
 
     count = await session.scalar(select(func.count()).select_from(RefreshToken))
     assert count == 0
+
+
+async def test_email_must_be_lower_case(session: AsyncSession) -> None:
+    session.add(User(email="Grower@Example.MD", hashed_password="hash"))
+
+    with pytest.raises(IntegrityError, match="ck_users_email_lowercase"):
+        await session.flush()

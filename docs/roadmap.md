@@ -36,7 +36,7 @@
 ## Спринт 2. Аутентификация, авторизация, пользователи
 
 - [x] pr-016 — Хэширование паролей (Argon2 / Passlib).
-- [ ] pr-017 — JWT: access- и refresh-токены.
+- [x] pr-017 — JWT: access- и refresh-токены.
 - [ ] pr-018 — Регистрация `/auth/register`.
 - [ ] pr-019 — Вход `/auth/login`.
 - [ ] pr-020 — Обновление токена `/auth/refresh`.

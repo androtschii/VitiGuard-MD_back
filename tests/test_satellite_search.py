@@ -19,6 +19,7 @@ PLOT = (
     " 28.860 47.141, 28.860 47.140)))"
 )
 START = datetime(2026, 9, 1, tzinfo=UTC)
+SETTINGS = Settings(_env_file=None)
 END = datetime(2026, 10, 1, tzinfo=UTC)
 
 
@@ -114,7 +115,7 @@ async def test_scenes_are_searched_by_vineyard_polygon(session: AsyncSession) ->
         Settings(_env_file=None),
     )
 
-    scenes = await find_scenes(session, client, vineyard, START, END)
+    scenes = await find_scenes(session, client, vineyard, START, END, SETTINGS)
 
     assert sent[0]["intersects"]["type"] == "MultiPolygon"
     assert sent[0]["intersects"]["coordinates"][0][0][0] == [28.86, 47.14]
@@ -136,7 +137,7 @@ async def test_period_must_be_ordered(session: AsyncSession) -> None:
     )
 
     with pytest.raises(BadRequestError):
-        await find_scenes(session, client, vineyard, END, START)
+        await find_scenes(session, client, vineyard, END, START, SETTINGS)
 
 
 @pytest.mark.integration
@@ -146,3 +147,47 @@ async def test_deleted_vineyard_is_not_found(session: AsyncSession) -> None:
 
     with pytest.raises(NotFoundError):
         await vineyard_geojson(session, vineyard)
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(("override", "expected"), [(None, 10), (25.5, 25.5)])
+async def test_cloud_threshold_is_sent_to_catalog(
+    session: AsyncSession, override: float | None, expected: float
+) -> None:
+    vineyard = await add_vineyard(session)
+    sent: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"features": []})
+
+    client = CopernicusClient(
+        httpx.AsyncClient(transport=httpx.MockTransport(handler)), SETTINGS
+    )
+
+    await find_scenes(session, client, vineyard, START, END, SETTINGS, override)
+
+    assert sent[0]["filter-lang"] == "cql2-json"
+    assert sent[0]["filter"] == {
+        "op": "<=",
+        "args": [{"property": "eo:cloud_cover"}, expected],
+    }
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("threshold", [-1, 101])
+async def test_invalid_cloud_threshold_is_rejected(
+    session: AsyncSession, threshold: float
+) -> None:
+    vineyard = await add_vineyard(session)
+    client = CopernicusClient(
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda _: pytest.fail("запроса быть не должно")
+            )
+        ),
+        SETTINGS,
+    )
+
+    with pytest.raises(BadRequestError, match="Порог облачности"):
+        await find_scenes(session, client, vineyard, START, END, SETTINGS, threshold)

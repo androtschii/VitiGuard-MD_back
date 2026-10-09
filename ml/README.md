@@ -27,10 +27,12 @@ artifacts/         веса, метрики, графики (не в git)
 ## Данные
 
 ```bash
-uv run python -m vitiguard_ml.data.plantvillage   # PlantVillage, виноград: 4 класса, 4 062 изображения
+uv run python -m vitiguard_ml.data.plantvillage   # PlantVillage: чёрная гниль, эска, пятнистость, здоровые
+uv run python -m vitiguard_ml.data.ngld           # NGLD (Mendeley Data): милдью, оидиум, здоровые
+uv run python -m vitiguard_ml.data.combine        # общий манифест data/processed/manifest.csv без повторов
 ```
 
-Каждый набор подготавливается в `data/processed/<источник>/<класс>/` и описывается манифестом `manifest.csv`: путь, класс, источник, SHA-256, ширина, высота.
+Каждый набор подготавливается в `data/processed/<источник>/<класс>/` и описывается манифестом `manifest.csv`: путь, класс, источник, SHA-256, перцептивный хэш dHash, ширина, высота.
 
 ## Воспроизводимость
 

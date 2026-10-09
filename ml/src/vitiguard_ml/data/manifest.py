@@ -12,6 +12,7 @@ class ManifestRow:
     label: str
     source: str
     sha256: str
+    dhash: str
     width: int
     height: int
 
@@ -39,6 +40,7 @@ def read_manifest(path: Path) -> list[ManifestRow]:
                 label=row["label"],
                 source=row["source"],
                 sha256=row["sha256"],
+                dhash=row["dhash"],
                 width=int(row["width"]),
                 height=int(row["height"]),
             )

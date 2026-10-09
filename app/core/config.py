@@ -64,6 +64,12 @@ class Settings(BaseSettings):
     smtp_starttls: bool = False
     mail_from: str = "VitiGuard MD <no-reply@vitiguard.md>"
 
+    # Open-Meteo: погода без ключа API. Прогноз и архив — разные адреса
+    open_meteo_forecast_url: str = "https://api.open-meteo.com/v1/forecast"
+    open_meteo_archive_url: str = "https://archive-api.open-meteo.com/v1/archive"
+    # Таймаут запросов к внешним сервисам, секунды
+    external_http_timeout: float = Field(default=10, gt=0)
+
     @model_validator(mode="after")
     def check_secret_key(self) -> Self:
         if self.environment in ("local", "test"):

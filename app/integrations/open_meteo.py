@@ -3,11 +3,11 @@
 Сервис бесплатный и без ключа. Все запросы — в UTC, чтобы время в базе не
 зависело от часового пояса и перехода на летнее время."""
 
-from datetime import UTC, datetime
-from typing import Any
+from datetime import UTC, date, datetime
+from typing import Any, Self
 
 import httpx2 as httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ValidationError, model_validator
 
 from app.core.config import Settings
 from app.core.errors import ExternalServiceError
@@ -36,6 +36,29 @@ class _CurrentResponse(BaseModel):
     current: _Current
 
 
+class _Hourly(BaseModel):
+    time: list[datetime]
+    temperature_2m: list[float | None]
+    relative_humidity_2m: list[float | None]
+    precipitation: list[float | None]
+
+    @model_validator(mode="after")
+    def check_lengths(self) -> Self:
+        lengths = {
+            len(self.time),
+            len(self.temperature_2m),
+            len(self.relative_humidity_2m),
+            len(self.precipitation),
+        }
+        if len(lengths) != 1:
+            raise ValueError("Ряды почасовых данных разной длины")
+        return self
+
+
+class _HourlyResponse(BaseModel):
+    hourly: _Hourly
+
+
 class OpenMeteoClient:
     def __init__(self, http: httpx.AsyncClient, settings: Settings) -> None:
         self._http = http
@@ -61,6 +84,49 @@ class OpenMeteoClient:
             relative_humidity=current.relative_humidity_2m,
             precipitation_mm=current.precipitation,
         )
+
+    async def history(
+        self, latitude: float, longitude: float, start: date, end: date
+    ) -> list[WeatherSample]:
+        """Почасовой архив за дни с start по end включительно (UTC).
+
+        Часы, для которых в архиве ещё нет значений (последние дни приходят с
+        задержкой), пропускаются: ноль вместо пропуска исказил бы агромодели —
+        «0 мм осадков» и «нет данных» — не одно и то же."""
+        data = await self._get(
+            self._settings.open_meteo_archive_url,
+            {
+                "latitude": latitude,
+                "longitude": longitude,
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+                "hourly": VARIABLES,
+                "timezone": "UTC",
+            },
+        )
+        try:
+            hourly = _HourlyResponse.model_validate(data).hourly
+        except ValidationError as error:
+            raise ExternalServiceError(UNAVAILABLE) from error
+        samples = []
+        for moment, temperature, humidity, precipitation in zip(
+            hourly.time,
+            hourly.temperature_2m,
+            hourly.relative_humidity_2m,
+            hourly.precipitation,
+            strict=True,
+        ):
+            if temperature is None or humidity is None or precipitation is None:
+                continue
+            samples.append(
+                WeatherSample(
+                    observed_at=_as_utc(moment),
+                    temperature_c=temperature,
+                    relative_humidity=humidity,
+                    precipitation_mm=precipitation,
+                )
+            )
+        return samples
 
     async def _get(self, url: str, params: dict[str, Any]) -> Any:
         """Запрос к Open-Meteo. Сетевой сбой, таймаут, ошибка сервиса или

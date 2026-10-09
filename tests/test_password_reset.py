@@ -165,3 +165,12 @@ def test_weak_new_password_gives_422_and_keeps_link(
     assert confirm(client, token, "short").status_code == 422
     # Ключ не потрачен на неудачную попытку
     assert confirm(client, token).status_code == 204
+
+
+def test_account_disabled_after_request_cannot_reset(
+    client: TestClient, run_sql: RunSql, mail: SentMail
+) -> None:
+    client.post(REQUEST_URL, json={"email": EMAIL})
+    run_sql("UPDATE users SET is_active = false")
+
+    assert confirm(client, mail.tokens()[0]).status_code == 400

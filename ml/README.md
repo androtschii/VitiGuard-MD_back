@@ -30,6 +30,7 @@ artifacts/         веса, метрики, графики (не в git)
 uv run python -m vitiguard_ml.data.plantvillage   # PlantVillage: чёрная гниль, эска, пятнистость, здоровые
 uv run python -m vitiguard_ml.data.ngld           # NGLD (Mendeley Data): милдью, оидиум, здоровые
 uv run python -m vitiguard_ml.data.combine        # общий манифест data/processed/manifest.csv без повторов
+uv run python -m vitiguard_ml.data.split          # splits.csv (train/val/test) и class_stats.json (веса классов)
 ```
 
 Каждый набор подготавливается в `data/processed/<источник>/<класс>/` и описывается манифестом `manifest.csv`: путь, класс, источник, SHA-256, перцептивный хэш dHash, ширина, высота.

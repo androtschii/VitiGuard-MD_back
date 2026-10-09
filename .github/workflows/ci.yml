@@ -46,7 +46,8 @@ jobs:
           working-directory: ml
       - run: uv sync --locked
       - run: uv run mypy
-      - run: uv run pytest
+      # Albumentations из группы train нужен только тестам аугментаций, PyTorch не ставится
+      - run: uv run --with albumentations pytest
 
   docker:
     name: Сборка Docker

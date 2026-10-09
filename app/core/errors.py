@@ -37,6 +37,13 @@ class ForbiddenError(AppError):
     status_code = 403
 
 
+class ExternalServiceError(AppError):
+    """Внешний сервис (погода, спутниковые снимки) не ответил или ответил ошибкой.
+    502: сервер работает, но не может получить данные от источника."""
+
+    status_code = 502
+
+
 class UnauthorizedError(AppError):
     """Нет действительных учётных данных: токен отсутствует, подделан или просрочен."""
 

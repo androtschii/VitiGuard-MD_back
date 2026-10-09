@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx2 as httpx
 from fastapi import FastAPI
 
 from app import __version__
@@ -19,7 +20,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         engine = create_engine(settings)
         application.state.engine = engine
         application.state.session_factory = create_session_factory(engine)
+        # Один HTTP-клиент на приложение: соединения с внешними сервисами
+        # переиспользуются, а не открываются заново на каждый запрос
+        application.state.http_client = httpx.AsyncClient(
+            timeout=settings.external_http_timeout,
+            transport=httpx.AsyncHTTPTransport(retries=2),
+            headers={"User-Agent": f"vitiguard-md/{__version__}"},
+        )
         yield
+        await application.state.http_client.aclose()
         # Закрывает все соединения пула, чтобы база не держала «зависшие» сессии
         await engine.dispose()
 

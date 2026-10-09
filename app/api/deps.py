@@ -14,6 +14,7 @@ from app.models.user import User, UserRole
 from app.repositories.user import UserRepository
 from app.schemas.pagination import PageParams
 from app.tasks.mail import send_password_reset_email
+from app.worker.celery_app import celery_app
 
 
 def get_app_settings(request: Request) -> Settings:
@@ -95,8 +96,13 @@ AdminDep = Annotated[User, Depends(require_roles(UserRole.ADMIN))]
 
 
 def send_reset_email_in_background(to: str, reset_url: str) -> None:
-    # Письмо отправляет воркер Celery: ответ API не ждёт почтовый сервер
-    send_password_reset_email.delay(to, reset_url)
+    """Ставит отправку письма в очередь: ответ API не ждёт почтовый сервер.
+
+    Задача отправляется через явно указанное приложение Celery, а не через
+    send_password_reset_email.delay(): задачи объявлены как shared_task и в
+    процессе API без этого ушли бы в Celery по умолчанию (брокер на localhost),
+    а не в Redis из настроек."""
+    celery_app.send_task(send_password_reset_email.name, args=(to, reset_url))
 
 
 def get_reset_mailer() -> Callable[[str, str], None]:

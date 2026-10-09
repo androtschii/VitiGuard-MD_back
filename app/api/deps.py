@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.tokens import TokenType, decode_token
+from app.integrations.copernicus import CopernicusClient
 from app.integrations.open_meteo import OpenMeteoClient
 from app.models.user import User, UserRole
 from app.repositories.user import UserRepository
@@ -112,3 +113,10 @@ def get_open_meteo(request: Request, settings: SettingsDep) -> OpenMeteoClient:
 
 
 OpenMeteoDep = Annotated[OpenMeteoClient, Depends(get_open_meteo)]
+
+
+def get_copernicus(request: Request, settings: SettingsDep) -> CopernicusClient:
+    return CopernicusClient(request.app.state.http_client, settings)
+
+
+CopernicusDep = Annotated[CopernicusClient, Depends(get_copernicus)]

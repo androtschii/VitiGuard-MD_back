@@ -84,7 +84,7 @@
 
 ## Спринт 5. Спутниковый мониторинг (Sentinel-2)
 
-- [ ] pr-056 — Клиент Copernicus Data Space Ecosystem API.
+- [x] pr-056 — Клиент Copernicus Data Space Ecosystem API.
 - [ ] pr-057 — Поиск снимков по полигону и дате.
 - [ ] pr-058 — Фильтрация снимков по облачности.
 - [ ] pr-059 — Загрузка каналов B04, B05, B08.

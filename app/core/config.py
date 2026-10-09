@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     # Open-Meteo: погода без ключа API. Прогноз и архив — разные адреса
     open_meteo_forecast_url: str = "https://api.open-meteo.com/v1/forecast"
     open_meteo_archive_url: str = "https://archive-api.open-meteo.com/v1/archive"
+    # Каталог снимков Copernicus Data Space Ecosystem (STAC API): поиск без учётной записи
+    copernicus_stac_url: str = "https://stac.dataspace.copernicus.eu/v1"
     # Таймаут запросов к внешним сервисам, секунды
     external_http_timeout: float = Field(default=10, gt=0)
 

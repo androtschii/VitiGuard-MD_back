@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     open_meteo_archive_url: str = "https://archive-api.open-meteo.com/v1/archive"
     # Каталог снимков Copernicus Data Space Ecosystem (STAC API): поиск без учётной записи
     copernicus_stac_url: str = "https://stac.dataspace.copernicus.eu/v1"
+    # Снимки с облачностью сцены выше порога (в процентах) не берутся
+    max_scene_cloud_cover: float = Field(default=10, ge=0, le=100)
     # Таймаут запросов к внешним сервисам, секунды
     external_http_timeout: float = Field(default=10, gt=0)
 

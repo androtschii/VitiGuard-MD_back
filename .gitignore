@@ -17,3 +17,7 @@ htmlcov/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Данные и результаты обучения хранятся вне git
+ml/data/
+ml/artifacts/

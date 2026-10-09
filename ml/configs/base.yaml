@@ -1,0 +1,24 @@
+# Общие параметры экспериментов. Конфиг конкретного эксперимента переопределяет
+# нужные поля: extends: base.yaml
+name: base
+seed: 42
+image_size: 224
+batch_size: 32
+epochs: 30
+learning_rate: 0.0003
+# Порядок классов — это порядок выходов модели; менять его нельзя без переобучения
+classes:
+  - healthy
+  - black_rot
+  - esca
+  - leaf_blight
+  - downy_mildew
+  - powdery_mildew
+split:
+  train: 0.7
+  val: 0.15
+  test: 0.15
+paths:
+  raw: data/raw
+  processed: data/processed
+  artifacts: artifacts

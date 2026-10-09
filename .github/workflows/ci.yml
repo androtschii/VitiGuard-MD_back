@@ -33,6 +33,21 @@ jobs:
       - run: uv sync --locked
       - run: uv run pytest --cov
 
+  ml:
+    name: ML
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ml
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          working-directory: ml
+      - run: uv sync --locked
+      - run: uv run mypy
+      - run: uv run pytest
+
   docker:
     name: Сборка Docker
     runs-on: ubuntu-latest

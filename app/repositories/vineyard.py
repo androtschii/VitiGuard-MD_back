@@ -91,3 +91,30 @@ class VineyardRepository(Repository[Vineyard]):
         if row is None:
             raise NotFoundError(self.not_found_message)
         return _view(row)
+
+    async def nearest(
+        self,
+        owner_id: uuid.UUID,
+        lon: float,
+        lat: float,
+        limit: int,
+        max_distance_m: float,
+    ) -> list[tuple[VineyardView, float]]:
+        """Ближайшие участки владельца к точке, с расстоянием в метрах по
+        эллипсоиду. До точки внутри участка расстояние — 0."""
+        point = cast(geo.ST_SetSRID(geo.ST_MakePoint(lon, lat), 4326), Geography)
+        area = cast(Vineyard.geom, Geography)
+        distance = geo.ST_Distance(area, point)
+        rows = await self.session.execute(
+            select(*VIEW_COLUMNS, distance)
+            .where(
+                Vineyard.owner_id == owner_id,
+                geo.ST_DWithin(area, point, max_distance_m),
+            )
+            .order_by(distance, Vineyard.id)
+            .limit(limit)
+        )
+        return [
+            (VineyardView(vineyard, json.loads(geojson), float(area_ha)), float(meters))
+            for vineyard, geojson, area_ha, meters in rows
+        ]

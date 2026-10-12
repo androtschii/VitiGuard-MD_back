@@ -286,3 +286,68 @@ def test_area_counts_all_parts(api_client: TestClient, headers: dict[str, str]) 
 
     listed = api_client.get(f"{URL}/{vineyard_id}", headers=headers).json()
     assert listed["area_ha"] == pytest.approx(2 * one, rel=1e-3)
+
+
+NEARBY = f"{URL}/nearby"
+# Точка внутри участка в позиции 0 (центр RING)
+INSIDE = {"lat": 47.1405, "lon": 28.861}
+
+
+def test_nearby_starts_with_vineyard_containing_point(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    for slot, name in enumerate(["Здесь", "Рядом", "Дальше"]):
+        create(api_client, headers, name, slot)
+
+    response = api_client.get(NEARBY, headers=headers, params=INSIDE)
+
+    assert response.status_code == 200
+    found = response.json()
+    assert [item["name"] for item in found] == ["Здесь", "Рядом", "Дальше"]
+    assert found[0]["distance_m"] == 0
+    # От точки до края соседнего участка — 0,002° долготы: около 152 м на этой широте
+    assert found[1]["distance_m"] == pytest.approx(152, abs=2)
+    assert found[1]["area_ha"] > 0
+
+
+def test_nearby_respects_limit_and_distance(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    for slot in range(3):
+        create(api_client, headers, f"Участок {slot}", slot)
+
+    limited = api_client.get(NEARBY, headers=headers, params={**INSIDE, "limit": 1})
+    near_only = api_client.get(
+        NEARBY, headers=headers, params={**INSIDE, "max_distance_km": 0.2}
+    )
+
+    assert [item["name"] for item in limited.json()] == ["Участок 0"]
+    assert [item["name"] for item in near_only.json()] == ["Участок 0", "Участок 1"]
+
+
+def test_nearby_ignores_other_owners(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    create(api_client, login_as(api_client, "neighbour@example.md"), "Чужой")
+
+    assert api_client.get(NEARBY, headers=headers, params=INSIDE).json() == []
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"lat": 95, "lon": 28.86},
+        {"lat": 47.14, "lon": 200},
+        {"lat": 47.14},
+        {**INSIDE, "limit": 0},
+        {**INSIDE, "max_distance_km": 1000},
+    ],
+)
+def test_nearby_validates_query(
+    api_client: TestClient, headers: dict[str, str], params: dict[str, float]
+) -> None:
+    assert api_client.get(NEARBY, headers=headers, params=params).status_code == 422
+
+
+def test_nearby_requires_login(api_client: TestClient) -> None:
+    assert api_client.get(NEARBY, params=INSIDE).status_code == 401

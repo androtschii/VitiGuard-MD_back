@@ -9,6 +9,7 @@ from app.repositories.vineyard import VineyardRepository
 from app.schemas.errors import ErrorResponse
 from app.schemas.pagination import Page
 from app.schemas.vineyard import VineyardCreate, VineyardRead
+from app.services.vineyard import validate_geometry
 
 router = APIRouter(
     prefix="/vineyards",
@@ -52,17 +53,23 @@ async def read_vineyard(
 
 
 @router.post(
-    "", status_code=status.HTTP_201_CREATED, summary="Создание участка по контуру"
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Создание участка по контуру",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse},
+        status.HTTP_409_CONFLICT: {"model": ErrorResponse},
+    },
 )
 async def create_vineyard(
     data: VineyardCreate, user: CurrentUserDep, session: SessionDep
 ) -> VineyardRead:
+    geometry = data.geometry.model_dump()
+    await validate_geometry(session, user.id, geometry)
     repository = VineyardRepository(session)
     # Владелец — всегда текущий пользователь: поля owner_id в запросе нет
-    vineyard = await repository.create_from_geojson(
-        user.id, data.name, data.geometry.model_dump()
-    )
-    geometry = await repository.geojson(vineyard)
+    vineyard = await repository.create_from_geojson(user.id, data.name, geometry)
+    saved = await repository.geojson(vineyard)
     await session.commit()
     await session.refresh(vineyard)
-    return to_read(vineyard, geometry)
+    return to_read(vineyard, saved)

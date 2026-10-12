@@ -97,3 +97,94 @@ def test_unclosed_ring_is_rejected(
 
     assert response.status_code == 422
     assert run_sql("SELECT count(*) FROM vineyards") == [(0,)]
+
+
+def login_as(api_client: TestClient, email: str) -> dict[str, str]:
+    credentials = {"email": email, "password": "secret123"}
+    api_client.post("/api/v1/auth/register", json={**credentials, "full_name": "Сосед"})
+    token = api_client.post("/api/v1/auth/login", json=credentials).json()[
+        "access_token"
+    ]
+    return {"Authorization": f"Bearer {token}"}
+
+
+def create(api_client: TestClient, headers: dict[str, str], name: str) -> str:
+    response = api_client.post(
+        URL,
+        headers=headers,
+        json={"name": name, "geometry": {"type": "Polygon", "coordinates": [RING]}},
+    )
+    vineyard_id: str = response.json()["id"]
+    return vineyard_id
+
+
+def test_list_contains_only_own_vineyards_sorted_by_name(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    for name in ["Пуркарь", "Криково", "Милештий Мици"]:
+        create(api_client, headers, name)
+    create(api_client, login_as(api_client, "neighbour@example.md"), "Чужой участок")
+
+    response = api_client.get(URL, headers=headers)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["name"] for item in body["items"]] == [
+        "Криково",
+        "Милештий Мици",
+        "Пуркарь",
+    ]
+    assert body["total"] == 3
+    assert body["items"][0]["geometry"] == {
+        "type": "MultiPolygon",
+        "coordinates": [[RING]],
+    }
+
+
+def test_list_is_paginated(api_client: TestClient, headers: dict[str, str]) -> None:
+    for number in range(5):
+        create(api_client, headers, f"Участок {number}")
+
+    body = api_client.get(URL, headers=headers, params={"page": 2, "size": 2}).json()
+
+    assert [item["name"] for item in body["items"]] == ["Участок 2", "Участок 3"]
+    assert (body["total"], body["page"], body["size"], body["pages"]) == (5, 2, 2, 3)
+
+
+def test_empty_list(api_client: TestClient, headers: dict[str, str]) -> None:
+    body = api_client.get(URL, headers=headers).json()
+
+    assert (body["items"], body["total"], body["pages"]) == ([], 0, 0)
+
+
+def test_vineyard_details(api_client: TestClient, headers: dict[str, str]) -> None:
+    vineyard_id = create(api_client, headers, "Криково")
+
+    response = api_client.get(f"{URL}/{vineyard_id}", headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["id"] == vineyard_id
+    assert response.json()["name"] == "Криково"
+
+
+def test_foreign_vineyard_looks_missing(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    foreign_id = create(
+        api_client, login_as(api_client, "neighbour@example.md"), "Чужой участок"
+    )
+
+    foreign = api_client.get(f"{URL}/{foreign_id}", headers=headers)
+    missing = api_client.get(
+        f"{URL}/01900000-0000-7000-8000-000000000000", headers=headers
+    )
+
+    assert foreign.status_code == missing.status_code == 404
+    assert foreign.json() == missing.json()
+
+
+def test_list_and_details_require_login(api_client: TestClient) -> None:
+    assert api_client.get(URL).status_code == 401
+    assert (
+        api_client.get(f"{URL}/01900000-0000-7000-8000-000000000000").status_code == 401
+    )

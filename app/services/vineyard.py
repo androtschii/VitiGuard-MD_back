@@ -6,14 +6,22 @@ Pydantic проверяет структуру GeoJSON (app/schemas/geojson.py),
 
 import json
 import uuid
+from dataclasses import dataclass
 from typing import Any
 
 from geoalchemy2 import functions as geo
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import and_, not_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.errors import BadRequestError, ConflictError
+from app.core.errors import AppError, BadRequestError, ConflictError
 from app.models.vineyard import Vineyard
+from app.repositories.vineyard import VineyardRepository
+from app.schemas.geojson import AreaGeometry
+from app.services.boundary_files import BoundaryCandidate
+
+AREA_GEOMETRY: TypeAdapter[AreaGeometry] = TypeAdapter(AreaGeometry)
+MAX_NAME_LENGTH = 255
 
 # Причины из ST_IsValidReason, которые пользователь может исправить сам
 REASONS = {
@@ -58,3 +66,43 @@ async def validate_geometry(
     )
     if name is not None:
         raise ConflictError(f"Контур накладывается на участок «{name}»")
+
+
+@dataclass(frozen=True)
+class SkippedBoundary:
+    index: int
+    name: str | None
+    reason: str
+
+
+async def import_boundaries(
+    session: AsyncSession, owner_id: uuid.UUID, candidates: list[BoundaryCandidate]
+) -> tuple[list[Vineyard], list[SkippedBoundary]]:
+    """Создаёт участки из контуров файла. Контур, который нельзя сохранить,
+    пропускается с причиной, остальные создаются: один кривой объект в файле
+    из сотни не должен отменять весь импорт."""
+    repository = VineyardRepository(session)
+    created: list[Vineyard] = []
+    skipped: list[SkippedBoundary] = []
+    for index, candidate in enumerate(candidates, start=1):
+        if candidate.geometry is None:
+            skipped.append(
+                SkippedBoundary(index, candidate.name, candidate.problem or "")
+            )
+            continue
+        try:
+            geometry = AREA_GEOMETRY.validate_python(candidate.geometry).model_dump()
+        except ValidationError:
+            skipped.append(
+                SkippedBoundary(index, candidate.name, "Контур не замкнут или неполон")
+            )
+            continue
+        try:
+            await validate_geometry(session, owner_id, geometry)
+        except AppError as error:
+            skipped.append(SkippedBoundary(index, candidate.name, error.detail))
+            continue
+        # Без названия в файле участок получает номер объекта
+        name = (candidate.name or f"Участок {index}")[:MAX_NAME_LENGTH]
+        created.append(await repository.create_from_geojson(owner_id, name, geometry))
+    return created, skipped

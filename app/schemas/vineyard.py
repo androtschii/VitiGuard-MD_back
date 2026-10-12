@@ -1,6 +1,6 @@
 from pydantic import Field
 
-from app.schemas.base import EntityResponse, RequestSchema
+from app.schemas.base import EntityResponse, RequestSchema, ResponseSchema
 from app.schemas.geojson import AreaGeometry, MultiPolygonRead
 
 
@@ -29,3 +29,15 @@ class NearbyQuery(RequestSchema):
 class VineyardNearby(VineyardRead):
     # 0 — точка внутри участка
     distance_m: float = Field(ge=0)
+
+
+class SkippedBoundaryRead(ResponseSchema):
+    # Номер объекта в файле, с единицы — как его видит человек в QGIS
+    index: int
+    name: str | None
+    reason: str
+
+
+class BoundaryImportResult(ResponseSchema):
+    created: list[VineyardRead]
+    skipped: list[SkippedBoundaryRead]

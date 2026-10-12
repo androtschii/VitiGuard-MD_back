@@ -1,19 +1,27 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Query, status
+from fastapi import APIRouter, Query, UploadFile, status
 
 from app.api.deps import CurrentUserDep, PageParamsDep, SessionDep
+from app.core.errors import BadRequestError
 from app.repositories.vineyard import VineyardRepository, VineyardView
 from app.schemas.errors import ErrorResponse
 from app.schemas.pagination import Page
 from app.schemas.vineyard import (
+    BoundaryImportResult,
     NearbyQuery,
     VineyardCreate,
     VineyardNearby,
     VineyardRead,
 )
-from app.services.vineyard import validate_geometry
+from app.services.boundary_files import parse_boundaries
+from app.services.vineyard import import_boundaries, validate_geometry
+
+# Контуры хозяйства — килобайты; ограничение защищает от чтения в память
+# многомегабайтного файла
+MAX_IMPORT_BYTES = 5 * 1024 * 1024
+MAX_IMPORT_FEATURES = 500
 
 router = APIRouter(
     prefix="/vineyards",
@@ -93,3 +101,33 @@ async def create_vineyard(
     await session.commit()
     await session.refresh(vineyard)
     return to_read(await repository.view(vineyard))
+
+
+@router.post(
+    "/import",
+    summary="Импорт контуров из GeoJSON или KML",
+    responses={status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse}},
+)
+async def import_vineyards(
+    file: UploadFile, user: CurrentUserDep, session: SessionDep
+) -> BoundaryImportResult:
+    content = await file.read(MAX_IMPORT_BYTES + 1)
+    if len(content) > MAX_IMPORT_BYTES:
+        raise BadRequestError("Файл больше 5 МБ")
+    candidates = parse_boundaries(content)
+    if not candidates:
+        raise BadRequestError("В файле нет объектов")
+    if len(candidates) > MAX_IMPORT_FEATURES:
+        raise BadRequestError(
+            f"В файле больше {MAX_IMPORT_FEATURES} объектов — разделите его"
+        )
+
+    created, skipped = await import_boundaries(session, user.id, candidates)
+    await session.commit()
+    repository = VineyardRepository(session)
+    return BoundaryImportResult.model_validate(
+        {
+            "created": [to_read(await repository.view(item)) for item in created],
+            "skipped": [vars(item) for item in skipped],
+        }
+    )

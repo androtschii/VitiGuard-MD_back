@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable
 
 import pytest
@@ -351,3 +352,127 @@ def test_nearby_validates_query(
 
 def test_nearby_requires_login(api_client: TestClient) -> None:
     assert api_client.get(NEARBY, params=INSIDE).status_code == 401
+
+
+IMPORT = f"{URL}/import"
+
+
+def feature(
+    name: str, ring: list[list[float]], kind: str = "Polygon"
+) -> dict[str, object]:
+    return {
+        "type": "Feature",
+        "properties": {"name": name},
+        "geometry": {"type": kind, "coordinates": [ring]},
+    }
+
+
+def upload(
+    api_client: TestClient, headers: dict[str, str], content: bytes, name: str
+) -> Response:
+    return api_client.post(IMPORT, headers=headers, files={"file": (name, content)})
+
+
+def test_import_creates_valid_and_reports_skipped(
+    api_client: TestClient, run_sql: RunSql, headers: dict[str, str]
+) -> None:
+    bowtie = [
+        [28.9, 47.14],
+        [28.902, 47.141],
+        [28.902, 47.14],
+        [28.9, 47.141],
+        [28.9, 47.14],
+    ]
+    collection = {
+        "type": "FeatureCollection",
+        "features": [
+            feature("Криково", RING),
+            feature("Пуркарь", [[x + 0.003, y] for x, y in RING]),
+            feature("Внахлёст", [[x + 0.001, y] for x, y in RING]),
+            feature("Восьмёрка", bowtie),
+            {
+                "type": "Feature",
+                "properties": {"name": "Колодец"},
+                "geometry": {"type": "Point", "coordinates": [28.8, 47]},
+            },
+            feature("Незамкнутый", RING[:-1]),
+        ],
+    }
+
+    response = upload(
+        api_client, headers, json.dumps(collection).encode(), "farm.geojson"
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["name"] for item in body["created"]] == ["Криково", "Пуркарь"]
+    assert body["created"][0]["area_ha"] > 0
+    assert body["skipped"] == [
+        {
+            "index": 3,
+            "name": "Внахлёст",
+            "reason": "Контур накладывается на участок «Криково»",
+        },
+        {"index": 4, "name": "Восьмёрка", "reason": "Контур пересекает сам себя"},
+        {"index": 5, "name": "Колодец", "reason": "Не полигон (Point)"},
+        {"index": 6, "name": "Незамкнутый", "reason": "Контур не замкнут или неполон"},
+    ]
+    assert run_sql("SELECT count(*) FROM vineyards") == [(2,)]
+
+
+def test_import_kml_names_unnamed_objects(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    coordinates = " ".join(f"{x},{y},0" for x, y in RING)
+    content = (
+        '<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark>'
+        "<Polygon><outerBoundaryIs><LinearRing><coordinates>"
+        f"{coordinates}</coordinates></LinearRing></outerBoundaryIs></Polygon>"
+        "</Placemark></Document></kml>"
+    ).encode()
+
+    body = upload(api_client, headers, content, "farm.kml").json()
+
+    assert [item["name"] for item in body["created"]] == ["Участок 1"]
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        (b'{"type": "FeatureCollection", "features": []}', "В файле нет объектов"),
+        (b"name;lat;lon", "Нужен файл GeoJSON или KML"),
+    ],
+)
+def test_import_rejects_useless_files(
+    api_client: TestClient, headers: dict[str, str], content: bytes, message: str
+) -> None:
+    response = upload(api_client, headers, content, "farm.txt")
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == message
+
+
+def test_import_limits(
+    api_client: TestClient, headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api.routes import vineyards
+
+    monkeypatch.setattr(vineyards, "MAX_IMPORT_FEATURES", 1)
+    two = {
+        "type": "FeatureCollection",
+        "features": [feature("a", RING), feature("b", RING)],
+    }
+    too_many = upload(api_client, headers, json.dumps(two).encode(), "farm.geojson")
+
+    monkeypatch.setattr(vineyards, "MAX_IMPORT_BYTES", 10)
+    too_big = upload(api_client, headers, b"{" + b" " * 20 + b"}", "farm.geojson")
+
+    assert too_many.status_code == too_big.status_code == 400
+    assert "разделите его" in too_many.json()["detail"]
+    assert too_big.json()["detail"] == "Файл больше 5 МБ"
+
+
+def test_import_requires_login(api_client: TestClient) -> None:
+    response = api_client.post(IMPORT, files={"file": ("farm.geojson", b"{}")})
+
+    assert response.status_code == 401

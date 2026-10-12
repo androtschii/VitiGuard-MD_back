@@ -252,3 +252,37 @@ def test_other_owners_vineyards_do_not_block(
     create(api_client, login_as(api_client, "neighbour@example.md"), "Арендованный")
 
     assert post_ring(api_client, headers, "Тот же контур", RING).status_code == 201
+
+
+def test_area_is_calculated_on_ellipsoid(
+    api_client: TestClient, run_sql: RunSql, headers: dict[str, str]
+) -> None:
+    # 0,002° × 0,001° у Крикова: около 152 × 111 м
+    body = post_ring(api_client, headers, "Криково", RING).json()
+
+    assert body["area_ha"] == pytest.approx(1.69, abs=0.01)
+    [(expected,)] = run_sql(
+        "SELECT ST_Area(geom::geography) / 10000 FROM vineyards"
+        f" WHERE id = '{body['id']}'"
+    )
+    assert body["area_ha"] == pytest.approx(expected)
+
+
+def test_area_counts_all_parts(api_client: TestClient, headers: dict[str, str]) -> None:
+    second = [[x + 0.01, y] for x, y in RING]
+
+    one = post_ring(api_client, headers, "Одна часть", RING).json()["area_ha"]
+    vineyard_id = api_client.post(
+        URL,
+        headers=headers,
+        json={
+            "name": "Две части",
+            "geometry": {
+                "type": "MultiPolygon",
+                "coordinates": [[[[x, y + 0.01] for x, y in RING]], [second]],
+            },
+        },
+    ).json()["id"]
+
+    listed = api_client.get(f"{URL}/{vineyard_id}", headers=headers).json()
+    assert listed["area_ha"] == pytest.approx(2 * one, rel=1e-3)

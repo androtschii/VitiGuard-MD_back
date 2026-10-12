@@ -1,12 +1,18 @@
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from app.api.deps import CurrentUserDep, PageParamsDep, SessionDep
 from app.repositories.vineyard import VineyardRepository, VineyardView
 from app.schemas.errors import ErrorResponse
 from app.schemas.pagination import Page
-from app.schemas.vineyard import VineyardCreate, VineyardRead
+from app.schemas.vineyard import (
+    NearbyQuery,
+    VineyardCreate,
+    VineyardNearby,
+    VineyardRead,
+)
 from app.services.vineyard import validate_geometry
 
 router = APIRouter(
@@ -36,6 +42,22 @@ async def list_vineyards(
 ) -> Page[VineyardRead]:
     items, total = await VineyardRepository(session).list_for_owner(user.id, params)
     return Page.of([to_read(item) for item in items], total, params)
+
+
+# Объявлен раньше /{vineyard_id}: иначе «nearby» разбиралось бы как id участка
+@router.get("/nearby", summary="Ближайшие участки к точке")
+async def nearby_vineyards(
+    query: Annotated[NearbyQuery, Query()], user: CurrentUserDep, session: SessionDep
+) -> list[VineyardNearby]:
+    found = await VineyardRepository(session).nearest(
+        user.id, query.lon, query.lat, query.limit, query.max_distance_km * 1000
+    )
+    return [
+        VineyardNearby.model_validate(
+            {**to_read(view).model_dump(), "distance_m": distance}
+        )
+        for view, distance in found
+    ]
 
 
 @router.get(

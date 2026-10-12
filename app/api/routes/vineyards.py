@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Query, UploadFile, status
+from fastapi import APIRouter, Query, Response, UploadFile, status
 
 from app.api.deps import CurrentUserDep, PageParamsDep, SessionDep
 from app.core.errors import BadRequestError
@@ -15,6 +15,7 @@ from app.schemas.vineyard import (
     VineyardNearby,
     VineyardRead,
 )
+from app.services.boundary_export import ExportFormat, to_geojson, to_shapefile_zip
 from app.services.boundary_files import parse_boundaries
 from app.services.vineyard import import_boundaries, validate_geometry
 
@@ -50,6 +51,45 @@ async def list_vineyards(
 ) -> Page[VineyardRead]:
     items, total = await VineyardRepository(session).list_for_owner(user.id, params)
     return Page.of([to_read(item) for item in items], total, params)
+
+
+def export_response(
+    views: list[VineyardView], export_format: ExportFormat, basename: str
+) -> Response:
+    # attachment: браузер сохраняет файл, а не открывает его во вкладке
+    if export_format is ExportFormat.shapefile:
+        content = to_shapefile_zip(views, basename)
+        media_type, filename = "application/zip", f"{basename}.zip"
+    else:
+        content = to_geojson(views)
+        media_type, filename = "application/geo+json", f"{basename}.geojson"
+    return Response(
+        content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/export",
+    summary="Выгрузка всех моих участков",
+    response_class=Response,
+    responses={
+        status.HTTP_200_OK: {
+            "content": {"application/geo+json": {}, "application/zip": {}},
+            "description": "GeoJSON или архив Shapefile",
+        }
+    },
+)
+async def export_vineyards(
+    user: CurrentUserDep,
+    session: SessionDep,
+    export_format: Annotated[
+        ExportFormat, Query(alias="format")
+    ] = ExportFormat.geojson,
+) -> Response:
+    views = await VineyardRepository(session).all_for_owner(user.id)
+    return export_response(views, export_format, "vineyards")
 
 
 # Объявлен раньше /{vineyard_id}: иначе «nearby» разбиралось бы как id участка
@@ -131,3 +171,28 @@ async def import_vineyards(
             "skipped": [vars(item) for item in skipped],
         }
     )
+
+
+@router.get(
+    "/{vineyard_id}/export",
+    summary="Выгрузка участка",
+    response_class=Response,
+    responses={
+        status.HTTP_200_OK: {
+            "content": {"application/geo+json": {}, "application/zip": {}},
+            "description": "GeoJSON или архив Shapefile",
+        },
+        status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
+    },
+)
+async def export_vineyard(
+    vineyard_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+    export_format: Annotated[
+        ExportFormat, Query(alias="format")
+    ] = ExportFormat.geojson,
+) -> Response:
+    view = await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
+    # Имя файла — id: название участка может содержать любые символы
+    return export_response([view], export_format, f"vineyard-{vineyard_id}")

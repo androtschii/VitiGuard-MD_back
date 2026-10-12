@@ -528,9 +528,8 @@ def test_export_one_vineyard_and_roundtrip(
     vineyard_id = create(api_client, headers, "Криково")
 
     exported = api_client.get(f"{URL}/{vineyard_id}/export", headers=headers)
-    assert (
-        f'filename="vineyard-{vineyard_id}.geojson"'
-        in (exported.headers["content-disposition"])
+    assert f'filename="vineyard-{vineyard_id}.geojson"' in (
+        exported.headers["content-disposition"]
     )
 
     # Выгруженный файл снова импортируется — у другого пользователя

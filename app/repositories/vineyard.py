@@ -55,6 +55,15 @@ class VineyardRepository(Repository[Vineyard]):
         ).one()
         return _view(row)
 
+    async def all_for_owner(self, owner_id: uuid.UUID) -> list[VineyardView]:
+        """Все участки владельца — для выгрузки в файл, без постраничности."""
+        rows = await self.session.execute(
+            select(*VIEW_COLUMNS)
+            .where(Vineyard.owner_id == owner_id)
+            .order_by(Vineyard.name, Vineyard.id)
+        )
+        return [_view(row) for row in rows]
+
     async def list_for_owner(
         self, owner_id: uuid.UUID, params: PageParams
     ) -> tuple[list[VineyardView], int]:

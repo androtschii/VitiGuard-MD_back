@@ -1,7 +1,10 @@
+import io
 import json
+import zipfile
 from collections.abc import Callable
 
 import pytest
+import shapefile
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
@@ -476,3 +479,90 @@ def test_import_requires_login(api_client: TestClient) -> None:
     response = api_client.post(IMPORT, files={"file": ("farm.geojson", b"{}")})
 
     assert response.status_code == 401
+
+
+EXPORT = f"{URL}/export"
+
+
+def test_export_geojson(api_client: TestClient, headers: dict[str, str]) -> None:
+    create(api_client, headers, "Криково")
+
+    response = api_client.get(EXPORT, headers=headers)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/geo+json"
+    assert 'filename="vineyards.geojson"' in response.headers["content-disposition"]
+    [exported] = response.json()["features"]
+    assert exported["properties"]["name"] == "Криково"
+    assert exported["properties"]["area_ha"] == pytest.approx(1.69, abs=0.01)
+    assert exported["geometry"] == {"type": "MultiPolygon", "coordinates": [[RING]]}
+
+
+def test_export_shapefile(api_client: TestClient, headers: dict[str, str]) -> None:
+    create(api_client, headers, "Криково")
+    create(api_client, headers, "Пуркарь", 1)
+
+    response = api_client.get(EXPORT, headers=headers, params={"format": "shapefile"})
+
+    assert response.headers["content-type"] == "application/zip"
+    archive = zipfile.ZipFile(io.BytesIO(response.content))
+    assert sorted(archive.namelist()) == [
+        f"vineyards.{ext}" for ext in ["cpg", "dbf", "prj", "shp", "shx"]
+    ]
+    assert archive.read("vineyards.cpg") == b"UTF-8"
+    assert b"WGS_1984" in archive.read("vineyards.prj")
+    reader = shapefile.Reader(
+        shp=io.BytesIO(archive.read("vineyards.shp")),
+        shx=io.BytesIO(archive.read("vineyards.shx")),
+        dbf=io.BytesIO(archive.read("vineyards.dbf")),
+        encoding="utf-8",
+    )
+    assert [record["name"] for record in reader.records()] == ["Криково", "Пуркарь"]
+    # Внешний контур в Shapefile — по часовой стрелке: обход RING развёрнут
+    assert [list(point) for point in reader.shape(0).points] == RING[::-1]
+
+
+def test_export_one_vineyard_and_roundtrip(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    vineyard_id = create(api_client, headers, "Криково")
+
+    exported = api_client.get(f"{URL}/{vineyard_id}/export", headers=headers)
+    assert f'filename="vineyard-{vineyard_id}.geojson"' in (
+        exported.headers["content-disposition"]
+    )
+
+    # Выгруженный файл снова импортируется — у другого пользователя
+    other = login_as(api_client, "neighbour@example.md")
+    body = upload(api_client, other, exported.content, "export.geojson").json()
+    assert [item["name"] for item in body["created"]] == ["Криково"]
+    assert body["created"][0]["geometry"]["coordinates"] == [[RING]]
+
+
+def test_export_of_foreign_vineyard_looks_missing(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    foreign = create(api_client, login_as(api_client, "neighbour@example.md"), "Чужой")
+
+    response = api_client.get(f"{URL}/{foreign}/export", headers=headers)
+
+    assert response.status_code == 404
+
+
+def test_export_validates_format_and_login(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    unknown = api_client.get(EXPORT, headers=headers, params={"format": "kmz"})
+
+    assert unknown.status_code == 422
+    assert api_client.get(EXPORT).status_code == 401
+
+
+@pytest.mark.parametrize("export_format", ["geojson", "shapefile"])
+def test_export_without_vineyards(
+    api_client: TestClient, headers: dict[str, str], export_format: str
+) -> None:
+    response = api_client.get(EXPORT, headers=headers, params={"format": export_format})
+
+    assert response.status_code == 200
+    assert response.content

@@ -1,11 +1,9 @@
 import uuid
-from typing import Any
 
 from fastapi import APIRouter, status
 
 from app.api.deps import CurrentUserDep, PageParamsDep, SessionDep
-from app.models.vineyard import Vineyard
-from app.repositories.vineyard import VineyardRepository
+from app.repositories.vineyard import VineyardRepository, VineyardView
 from app.schemas.errors import ErrorResponse
 from app.schemas.pagination import Page
 from app.schemas.vineyard import VineyardCreate, VineyardRead
@@ -18,15 +16,16 @@ router = APIRouter(
 )
 
 
-def to_read(vineyard: Vineyard, geometry: dict[str, Any]) -> VineyardRead:
-    # Контур хранится как геометрия PostGIS, а в ответ идёт GeoJSON из запроса
+def to_read(view: VineyardView) -> VineyardRead:
+    # Контур хранится как геометрия PostGIS, а в ответ идут GeoJSON и площадь из запроса
     return VineyardRead.model_validate(
         {
-            "id": vineyard.id,
-            "created_at": vineyard.created_at,
-            "updated_at": vineyard.updated_at,
-            "name": vineyard.name,
-            "geometry": geometry,
+            "id": view.vineyard.id,
+            "created_at": view.vineyard.created_at,
+            "updated_at": view.vineyard.updated_at,
+            "name": view.vineyard.name,
+            "geometry": view.geometry,
+            "area_ha": view.area_ha,
         }
     )
 
@@ -36,7 +35,7 @@ async def list_vineyards(
     params: PageParamsDep, user: CurrentUserDep, session: SessionDep
 ) -> Page[VineyardRead]:
     items, total = await VineyardRepository(session).list_for_owner(user.id, params)
-    return Page.of([to_read(*item) for item in items], total, params)
+    return Page.of([to_read(item) for item in items], total, params)
 
 
 @router.get(
@@ -48,7 +47,7 @@ async def read_vineyard(
     vineyard_id: uuid.UUID, user: CurrentUserDep, session: SessionDep
 ) -> VineyardRead:
     return to_read(
-        *await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
+        await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
     )
 
 
@@ -69,7 +68,6 @@ async def create_vineyard(
     repository = VineyardRepository(session)
     # Владелец — всегда текущий пользователь: поля owner_id в запросе нет
     vineyard = await repository.create_from_geojson(user.id, data.name, geometry)
-    saved = await repository.geojson(vineyard)
     await session.commit()
     await session.refresh(vineyard)
-    return to_read(vineyard, saved)
+    return to_read(await repository.view(vineyard))

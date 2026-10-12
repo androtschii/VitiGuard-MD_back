@@ -12,3 +12,5 @@ class VineyardCreate(RequestSchema):
 class VineyardRead(EntityResponse):
     name: str
     geometry: MultiPolygonRead
+    # Площадь считает PostGIS по эллипсоиду WGS84 (ST_Area по geography)
+    area_ha: float = Field(ge=0)

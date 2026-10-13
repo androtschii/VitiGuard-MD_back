@@ -14,10 +14,15 @@ from app.schemas.vineyard import (
     VineyardCreate,
     VineyardNearby,
     VineyardRead,
+    VineyardUpdate,
 )
 from app.services.boundary_export import ExportFormat, to_geojson, to_shapefile_zip
 from app.services.boundary_files import parse_boundaries
-from app.services.vineyard import import_boundaries, validate_geometry
+from app.services.vineyard import (
+    ensure_variety_exists,
+    import_boundaries,
+    validate_geometry,
+)
 
 # Контуры хозяйства — килобайты; ограничение защищает от чтения в память
 # многомегабайтного файла
@@ -41,6 +46,8 @@ def to_read(view: VineyardView) -> VineyardRead:
             "name": view.vineyard.name,
             "geometry": view.geometry,
             "area_ha": view.area_ha,
+            "variety": view.vineyard.variety,
+            "planting_year": view.vineyard.planting_year,
         }
     )
 
@@ -135,9 +142,16 @@ async def create_vineyard(
 ) -> VineyardRead:
     geometry = data.geometry.model_dump()
     await validate_geometry(session, user.id, geometry)
+    await ensure_variety_exists(session, data.variety_id)
     repository = VineyardRepository(session)
     # Владелец — всегда текущий пользователь: поля owner_id в запросе нет
-    vineyard = await repository.create_from_geojson(user.id, data.name, geometry)
+    vineyard = await repository.create_from_geojson(
+        user.id,
+        data.name,
+        geometry,
+        variety_id=data.variety_id,
+        planting_year=data.planting_year,
+    )
     await session.commit()
     await session.refresh(vineyard)
     return to_read(await repository.view(vineyard))
@@ -196,3 +210,47 @@ async def export_vineyard(
     view = await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
     # Имя файла — id: название участка может содержать любые символы
     return export_response([view], export_format, f"vineyard-{vineyard_id}")
+
+
+@router.patch(
+    "/{vineyard_id}",
+    summary="Изменение участка",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse},
+        status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
+        status.HTTP_409_CONFLICT: {"model": ErrorResponse},
+    },
+)
+async def update_vineyard(
+    vineyard_id: uuid.UUID,
+    data: VineyardUpdate,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> VineyardRead:
+    repository = VineyardRepository(session)
+    vineyard = (await repository.get_for_owner(user.id, vineyard_id)).vineyard
+    values = data.model_dump(exclude_unset=True)
+    geometry = values.pop("geometry", None)
+    if geometry is not None:
+        # Новый контур проверяется так же, как при создании, кроме наложения на себя
+        await validate_geometry(session, user.id, geometry, exclude_id=vineyard.id)
+    await ensure_variety_exists(session, values.get("variety_id"))
+    await repository.update_with_geojson(vineyard, geometry, **values)
+    await session.commit()
+    return to_read(await repository.view(vineyard))
+
+
+@router.delete(
+    "/{vineyard_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Удаление участка",
+    responses={status.HTTP_404_NOT_FOUND: {"model": ErrorResponse}},
+)
+async def delete_vineyard(
+    vineyard_id: uuid.UUID, user: CurrentUserDep, session: SessionDep
+) -> None:
+    repository = VineyardRepository(session)
+    vineyard = (await repository.get_for_owner(user.id, vineyard_id)).vineyard
+    # Снимки, погода и риски участка удаляются каскадом, фото листьев остаются
+    await repository.delete(vineyard)
+    await session.commit()

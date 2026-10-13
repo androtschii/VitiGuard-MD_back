@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError, BadRequestError, ConflictError
 from app.models.vineyard import Vineyard
+from app.repositories.variety import VarietyRepository
 from app.repositories.vineyard import VineyardRepository
 from app.schemas.geojson import AreaGeometry
 from app.services.boundary_files import BoundaryCandidate
@@ -44,6 +45,7 @@ async def validate_geometry(
     session: AsyncSession,
     owner_id: uuid.UUID,
     geometry: dict[str, Any],
+    exclude_id: uuid.UUID | None = None,
 ) -> None:
     geom = geo.ST_GeomFromGeoJSON(json.dumps(geometry))
 
@@ -61,6 +63,9 @@ async def validate_geometry(
         geo.ST_Intersects(Vineyard.geom, geom),
         not_(geo.ST_Touches(Vineyard.geom, geom)),
     )
+    if exclude_id is not None:
+        # При правке контура участок не накладывается сам на себя
+        overlap = and_(overlap, Vineyard.id != exclude_id)
     name = await session.scalar(
         select(Vineyard.name).where(overlap).order_by(Vineyard.name).limit(1)
     )
@@ -106,3 +111,14 @@ async def import_boundaries(
         name = (candidate.name or f"Участок {index}")[:MAX_NAME_LENGTH]
         created.append(await repository.create_from_geojson(owner_id, name, geometry))
     return created, skipped
+
+
+async def ensure_variety_exists(
+    session: AsyncSession, variety_id: uuid.UUID | None
+) -> None:
+    # Ошибка внешнего ключа в базе дала бы 500; понятный ответ — 400
+    if (
+        variety_id is not None
+        and await VarietyRepository(session).get(variety_id) is None
+    ):
+        raise BadRequestError("Сорт не найден")

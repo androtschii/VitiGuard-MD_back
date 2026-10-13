@@ -1,10 +1,12 @@
 import json
 import uuid
+from decimal import Decimal
 from typing import Any, NamedTuple
 
 from geoalchemy2 import Geography
 from geoalchemy2 import functions as geo
-from sqlalchemy import Row, cast, func, select
+from sqlalchemy import Row, Select, cast, func, select
+from sqlalchemy.orm import selectinload
 
 from app.core.errors import NotFoundError
 from app.models.vineyard import Vineyard
@@ -35,22 +37,48 @@ def _view(row: Row[Vineyard, str, float]) -> VineyardView:
 VIEW_COLUMNS = (Vineyard, geo.ST_AsGeoJSON(Vineyard.geom), AREA_HA)
 
 
+def _select_views() -> Select[Vineyard, Any, float | Decimal]:
+    # Сорт подгружается вторым запросом сразу для всей страницы, а
+    # populate_existing обновляет участок, уже загруженный в этой сессии
+    return (
+        select(*VIEW_COLUMNS)
+        .options(selectinload(Vineyard.variety))
+        .execution_options(populate_existing=True)
+    )
+
+
+def _geom(geometry: dict[str, Any]) -> Any:
+    # GeoJSON разбирает сам PostGIS (SRID 4326 по RFC 7946), а ST_Multi
+    # приводит Polygon к MultiPolygon — тип столбца
+    return geo.ST_Multi(geo.ST_GeomFromGeoJSON(json.dumps(geometry)))
+
+
 class VineyardRepository(Repository[Vineyard]):
     model = Vineyard
     not_found_message = "Участок не найден"
 
     async def create_from_geojson(
-        self, owner_id: uuid.UUID, name: str, geometry: dict[str, Any]
+        self,
+        owner_id: uuid.UUID,
+        name: str,
+        geometry: dict[str, Any],
+        **values: Any,
     ) -> Vineyard:
-        # GeoJSON разбирает сам PostGIS (SRID 4326 по RFC 7946), а ST_Multi
-        # приводит Polygon к MultiPolygon — тип столбца
-        geom = geo.ST_Multi(geo.ST_GeomFromGeoJSON(json.dumps(geometry)))
-        return await self.create(owner_id=owner_id, name=name, geom=geom)
+        return await self.create(
+            owner_id=owner_id, name=name, geom=_geom(geometry), **values
+        )
+
+    async def update_with_geojson(
+        self, vineyard: Vineyard, geometry: dict[str, Any] | None, **values: Any
+    ) -> Vineyard:
+        if geometry is not None:
+            values["geom"] = _geom(geometry)
+        return await self.update(vineyard, **values)
 
     async def view(self, vineyard: Vineyard) -> VineyardView:
         row = (
             await self.session.execute(
-                select(*VIEW_COLUMNS).where(Vineyard.id == vineyard.id)
+                _select_views().where(Vineyard.id == vineyard.id)
             )
         ).one()
         return _view(row)
@@ -58,7 +86,7 @@ class VineyardRepository(Repository[Vineyard]):
     async def all_for_owner(self, owner_id: uuid.UUID) -> list[VineyardView]:
         """Все участки владельца — для выгрузки в файл, без постраничности."""
         rows = await self.session.execute(
-            select(*VIEW_COLUMNS)
+            _select_views()
             .where(Vineyard.owner_id == owner_id)
             .order_by(Vineyard.name, Vineyard.id)
         )
@@ -70,7 +98,7 @@ class VineyardRepository(Repository[Vineyard]):
         """Страница участков владельца вместе с контурами и площадями — одним
         запросом, а не отдельным запросом для каждого участка."""
         rows = await self.session.execute(
-            select(*VIEW_COLUMNS)
+            _select_views()
             .where(Vineyard.owner_id == owner_id)
             # По названию — так пользователь ищет участок глазами; id — для
             # стабильного порядка участков с одинаковыми названиями
@@ -92,7 +120,7 @@ class VineyardRepository(Repository[Vineyard]):
         «нет доступа» подтвердил бы, что участок с таким id есть."""
         row = (
             await self.session.execute(
-                select(*VIEW_COLUMNS).where(
+                _select_views().where(
                     Vineyard.id == vineyard_id, Vineyard.owner_id == owner_id
                 )
             )
@@ -115,7 +143,8 @@ class VineyardRepository(Repository[Vineyard]):
         area = cast(Vineyard.geom, Geography)
         distance = geo.ST_Distance(area, point)
         rows = await self.session.execute(
-            select(*VIEW_COLUMNS, distance)
+            _select_views()
+            .add_columns(distance)
             .where(
                 Vineyard.owner_id == owner_id,
                 geo.ST_DWithin(area, point, max_distance_m),

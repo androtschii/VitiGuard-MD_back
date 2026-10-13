@@ -566,3 +566,193 @@ def test_export_without_vineyards(
 
     assert response.status_code == 200
     assert response.content
+
+
+def merlot_id(api_client: TestClient, headers: dict[str, str]) -> str:
+    varieties = api_client.get("/api/v1/varieties", headers=headers).json()
+    variety_id: str = next(v["id"] for v in varieties if v["name"] == "Merlot")
+    return variety_id
+
+
+def test_variety_and_planting_year(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    merlot = merlot_id(api_client, headers)
+
+    created = api_client.post(
+        URL,
+        headers=headers,
+        json={
+            "name": "Криково",
+            "geometry": {"type": "Polygon", "coordinates": [RING]},
+            "variety_id": merlot,
+            "planting_year": 2015,
+        },
+    )
+
+    assert created.status_code == 201
+    assert created.json()["variety"] == {
+        "id": merlot,
+        "name": "Merlot",
+        "berry_color": "red",
+    }
+    assert created.json()["planting_year"] == 2015
+    listed = api_client.get(URL, headers=headers).json()["items"][0]
+    assert listed["variety"]["name"] == "Merlot"
+
+
+def test_variety_and_year_are_optional(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    vineyard_id = create(api_client, headers, "Без сорта")
+
+    body = api_client.get(f"{URL}/{vineyard_id}", headers=headers).json()
+
+    assert (body["variety"], body["planting_year"]) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("extra", "status"),
+    [
+        ({"planting_year": 1899}, 422),
+        ({"planting_year": 2999}, 422),
+        ({"variety_id": "01900000-0000-7000-8000-000000000000"}, 400),
+    ],
+)
+def test_variety_and_year_are_validated(
+    api_client: TestClient,
+    headers: dict[str, str],
+    extra: dict[str, object],
+    status: int,
+) -> None:
+    response = api_client.post(
+        URL,
+        headers=headers,
+        json={
+            "name": "Криково",
+            "geometry": {"type": "Polygon", "coordinates": [RING]},
+            **extra,
+        },
+    )
+
+    assert response.status_code == status
+
+
+def test_update_vineyard(api_client: TestClient, headers: dict[str, str]) -> None:
+    vineyard_id = create(api_client, headers, "Криково")
+    merlot = merlot_id(api_client, headers)
+    moved = [[round(x + 0.0005, 6), y] for x, y in RING]
+
+    response = api_client.patch(
+        f"{URL}/{vineyard_id}",
+        headers=headers,
+        json={
+            "name": "Криково, северный склон",
+            "geometry": {"type": "Polygon", "coordinates": [moved]},
+            "variety_id": merlot,
+            "planting_year": 2018,
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "Криково, северный склон"
+    # Сдвинутый контур пересекается со старым — сам с собой участок не конфликтует
+    assert body["geometry"]["coordinates"] == [[moved]]
+    assert (body["variety"]["name"], body["planting_year"]) == ("Merlot", 2018)
+
+    cleared = api_client.patch(
+        f"{URL}/{vineyard_id}",
+        headers=headers,
+        json={"variety_id": None, "planting_year": None},
+    ).json()
+    assert (cleared["variety"], cleared["planting_year"]) == (None, None)
+    assert cleared["name"] == "Криково, северный склон"
+
+
+def test_update_checks_overlap_and_validation(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    create(api_client, headers, "Криково")
+    neighbour = create(api_client, headers, "Сосед", 1)
+    onto_first = [[x + 0.001, y] for x, y in RING]
+
+    overlap = api_client.patch(
+        f"{URL}/{neighbour}",
+        headers=headers,
+        json={"geometry": {"type": "Polygon", "coordinates": [onto_first]}},
+    )
+    erased = api_client.patch(
+        f"{URL}/{neighbour}", headers=headers, json={"name": None}
+    )
+    unknown = api_client.patch(
+        f"{URL}/{neighbour}",
+        headers=headers,
+        json={"variety_id": "01900000-0000-7000-8000-000000000000"},
+    )
+
+    assert overlap.status_code == 409
+    assert erased.status_code == 422
+    assert unknown.status_code == 400
+
+
+def test_delete_vineyard(
+    api_client: TestClient, run_sql: RunSql, headers: dict[str, str]
+) -> None:
+    vineyard_id = create(api_client, headers, "Криково")
+
+    assert api_client.delete(f"{URL}/{vineyard_id}", headers=headers).status_code == 204
+    assert api_client.get(f"{URL}/{vineyard_id}", headers=headers).status_code == 404
+    assert run_sql("SELECT count(*) FROM vineyards") == [(0,)]
+
+
+def test_foreign_vineyard_cannot_be_changed(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    foreign = create(api_client, login_as(api_client, "neighbour@example.md"), "Чужой")
+
+    assert (
+        api_client.patch(
+            f"{URL}/{foreign}", headers=headers, json={"name": "Мой"}
+        ).status_code
+        == 404
+    )
+    assert api_client.delete(f"{URL}/{foreign}", headers=headers).status_code == 404
+
+
+def test_deleting_variety_keeps_vineyards(
+    api_client: TestClient, headers: dict[str, str]
+) -> None:
+    api_client.post(
+        "/api/v1/auth/register",
+        json={
+            "email": "agro2@example.md",
+            "password": "secret123",
+            "full_name": "Агроном",
+            "role": "agronomist",
+        },
+    )
+    agro = api_client.post(
+        "/api/v1/auth/login",
+        json={"email": "agro2@example.md", "password": "secret123"},
+    ).json()["access_token"]
+    agro_headers = {"Authorization": f"Bearer {agro}"}
+    variety = api_client.post(
+        "/api/v1/varieties",
+        headers=agro_headers,
+        json={"name": "Viorica", "berry_color": "white"},
+    ).json()["id"]
+    created = api_client.post(
+        URL,
+        headers=headers,
+        json={
+            "name": "Криково",
+            "geometry": {"type": "Polygon", "coordinates": [RING]},
+            "variety_id": variety,
+        },
+    ).json()["id"]
+
+    api_client.delete(f"/api/v1/varieties/{variety}", headers=agro_headers)
+
+    body = api_client.get(f"{URL}/{created}", headers=headers).json()
+    assert body["variety"] is None

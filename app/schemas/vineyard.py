@@ -86,3 +86,11 @@ class SkippedBoundaryRead(ResponseSchema):
 class BoundaryImportResult(ResponseSchema):
     created: list[VineyardRead]
     skipped: list[SkippedBoundaryRead]
+
+
+class VineyardContextRead(ResponseSchema):
+    """Местность вокруг участка по данным OpenStreetMap."""
+
+    osm_overlap_ratio: float = Field(ge=0, le=1)
+    osm_vineyards_within_1km: int = Field(ge=0)
+    nearest_osm_distance_m: float | None

@@ -11,6 +11,7 @@ from app.schemas.pagination import Page
 from app.schemas.vineyard import (
     BoundaryImportResult,
     NearbyQuery,
+    VineyardContextRead,
     VineyardCreate,
     VineyardNearby,
     VineyardRead,
@@ -18,6 +19,7 @@ from app.schemas.vineyard import (
 )
 from app.services.boundary_export import ExportFormat, to_geojson, to_shapefile_zip
 from app.services.boundary_files import parse_boundaries
+from app.services.osm import vineyard_context
 from app.services.vineyard import (
     ensure_variety_exists,
     import_boundaries,
@@ -254,3 +256,16 @@ async def delete_vineyard(
     # Снимки, погода и риски участка удаляются каскадом, фото листьев остаются
     await repository.delete(vineyard)
     await session.commit()
+
+
+@router.get(
+    "/{vineyard_id}/context",
+    summary="Местность вокруг участка по OpenStreetMap",
+    responses={status.HTTP_404_NOT_FOUND: {"model": ErrorResponse}},
+)
+async def read_vineyard_context(
+    vineyard_id: uuid.UUID, user: CurrentUserDep, session: SessionDep
+) -> VineyardContextRead:
+    view = await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
+    context = await vineyard_context(session, view.vineyard)
+    return VineyardContextRead.model_validate(vars(context))

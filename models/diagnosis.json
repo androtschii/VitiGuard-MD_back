@@ -1,5 +1,12 @@
 {
   "name": "efficientnet_b0",
-  "classes": ["healthy", "black_rot", "esca", "leaf_blight", "downy_mildew", "powdery_mildew"],
+  "classes": [
+    "healthy",
+    "black_rot",
+    "esca",
+    "leaf_blight",
+    "downy_mildew",
+    "powdery_mildew"
+  ],
   "image_size": 224
 }

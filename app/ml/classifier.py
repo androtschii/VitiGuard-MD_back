@@ -16,10 +16,38 @@ IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 
+def to_input(image: Image.Image, size: int) -> np.ndarray:
+    """RGB → квадрат size×size → нормализация → пакет NCHW из одного снимка,
+    как в преобразовании оценки при обучении (Resize + Normalize)."""
+    resized = image.convert("RGB").resize((size, size), Image.Resampling.BILINEAR)
+    pixels = np.asarray(resized, dtype=np.float32) / 255
+    normalized = (pixels - IMAGENET_MEAN) / IMAGENET_STD
+    return np.ascontiguousarray(normalized.transpose(2, 0, 1)[None])
+
+
+def create_session(model_path: Path) -> ort.InferenceSession:
+    options = ort.SessionOptions()
+    # Запрос — один снимок: много потоков внутри операции почти не ускоряют
+    # его, но отнимают процессор у параллельных запросов
+    options.intra_op_num_threads = 2
+    return ort.InferenceSession(
+        str(model_path), options, providers=["CPUExecutionProvider"]
+    )
+
+
 @dataclass(frozen=True)
 class Prediction:
     disease: str
     probability: float
+
+
+@dataclass(frozen=True)
+class Classification:
+    # Вероятности всех классов по убыванию
+    predictions: list[Prediction]
+    # Карта активации самого вероятного класса (0..1) или None, если модель
+    # экспортирована без неё
+    activation: np.ndarray | None
 
 
 class LeafClassifier:
@@ -28,34 +56,31 @@ class LeafClassifier:
         self.name: str = meta["name"]
         self.classes: list[str] = meta["classes"]
         self.image_size: int = meta["image_size"]
-        options = ort.SessionOptions()
-        # Запрос — один снимок: много потоков внутри операции почти не ускоряют
-        # его, но отнимают процессор у параллельных запросов
-        options.intra_op_num_threads = 2
-        self.session = ort.InferenceSession(
-            str(model_path), options, providers=["CPUExecutionProvider"]
-        )
+        self.session = create_session(model_path)
         self.input_name: str = self.session.get_inputs()[0].name
+        # Второй выход — карта активации классов (vitiguard_ml.export_server)
+        self.has_activation = len(self.session.get_outputs()) > 1
 
-    def preprocess(self, image: Image.Image) -> np.ndarray:
-        """RGB → квадрат image_size → нормализация → пакет NCHW из одного снимка,
-        как в преобразовании оценки при обучении (Resize + Normalize)."""
-        resized = image.convert("RGB").resize(
-            (self.image_size, self.image_size), Image.Resampling.BILINEAR
+    def classify(self, image: Image.Image) -> Classification:
+        outputs = self.session.run(
+            None, {self.input_name: to_input(image, self.image_size)}
         )
-        pixels = np.asarray(resized, dtype=np.float32) / 255
-        normalized = (pixels - IMAGENET_MEAN) / IMAGENET_STD
-        return np.ascontiguousarray(normalized.transpose(2, 0, 1)[None])
-
-    def predict(self, image: Image.Image) -> list[Prediction]:
-        """Вероятности всех классов по убыванию."""
-        outputs = self.session.run(None, {self.input_name: self.preprocess(image)})
         logits = np.asarray(outputs[0][0], dtype=np.float64)
         exp = np.exp(logits - logits.max())
         probabilities = exp / exp.sum()
+        best = int(probabilities.argmax())
         ranked = sorted(
             zip(self.classes, probabilities.tolist(), strict=True),
             key=lambda pair: pair[1],
             reverse=True,
         )
-        return [Prediction(name, probability) for name, probability in ranked]
+        activation = None
+        if self.has_activation:
+            # Как в Grad-CAM: отрицательный вклад отбрасывается, максимум — 1
+            cam = np.maximum(np.asarray(outputs[1][0][best], dtype=np.float32), 0)
+            peak = float(cam.max())
+            activation = cam / peak if peak > 0 else cam
+        return Classification(
+            [Prediction(name, probability) for name, probability in ranked],
+            activation,
+        )

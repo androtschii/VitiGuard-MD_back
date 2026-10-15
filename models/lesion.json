@@ -1,0 +1,4 @@
+{
+  "name": "unet_resnet34",
+  "image_size": 256
+}

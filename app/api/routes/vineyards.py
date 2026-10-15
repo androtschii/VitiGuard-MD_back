@@ -20,6 +20,7 @@ from app.schemas.vineyard import (
 from app.services.boundary_export import ExportFormat, to_geojson, to_shapefile_zip
 from app.services.boundary_files import parse_boundaries
 from app.services.osm import vineyard_context
+from app.services.region import district_of
 from app.services.vineyard import (
     ensure_variety_exists,
     import_boundaries,
@@ -268,4 +269,5 @@ async def read_vineyard_context(
 ) -> VineyardContextRead:
     view = await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
     context = await vineyard_context(session, view.vineyard)
-    return VineyardContextRead.model_validate(vars(context))
+    district = await district_of(session, view.vineyard)
+    return VineyardContextRead.model_validate({**vars(context), "district": district})

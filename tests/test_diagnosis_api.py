@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from diagnosis_model import build_model, photo
+from diagnosis_model import build_model, build_segmenter, photo
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings
@@ -12,18 +12,20 @@ URL = "/api/v1/ai/diagnose"
 CREDENTIALS = {"email": "grower@example.md", "password": "secret123"}
 
 
-def use_model(client: TestClient, path: Path) -> None:
+def use_models(client: TestClient, classifier: Path, segmenter: Path) -> None:
+    """Тестовые модели вместо настоящих: те могут лежать в models/ локально."""
     app = client.app
     settings: Settings = app.state.settings  # type: ignore[attr-defined]
     app.state.settings = settings.model_copy(  # type: ignore[attr-defined]
-        update={"diagnosis_model_path": path}
+        update={"diagnosis_model_path": classifier, "lesion_model_path": segmenter}
     )
     app.state.classifier = None  # type: ignore[attr-defined]
+    app.state.segmenter = None  # type: ignore[attr-defined]
 
 
 @pytest.fixture
 def client(api_client: TestClient, tmp_path: Path) -> TestClient:
-    use_model(api_client, build_model(tmp_path / "tiny.onnx"))
+    use_models(api_client, build_model(tmp_path / "tiny.onnx"), tmp_path / "no.onnx")
     return api_client
 
 
@@ -59,6 +61,32 @@ def test_diagnose_confident(client: TestClient, headers: dict[str, str]) -> None
     assert isinstance(top, list)
     assert top[0]["disease"] == "healthy"
     assert len(top) == 3
+    # Модель без карты активации, модели сегментации нет
+    assert result["heatmap"] is None
+    assert result["lesion"] is None
+
+
+def test_diagnose_with_heatmap_and_lesion(
+    client: TestClient, headers: dict[str, str], tmp_path: Path
+) -> None:
+    use_models(
+        client,
+        build_model(tmp_path / "cam.onnx", with_cam=True),
+        build_segmenter(tmp_path / "unet.onnx"),
+    )
+
+    result = diagnose(client, headers, photo((220, 0, 0)))
+
+    assert result["status"] == 200
+    assert isinstance(result["heatmap"], str)
+    assert result["heatmap"].startswith("data:image/png;base64,")
+    lesion = result["lesion"]
+    assert isinstance(lesion, dict)
+    assert lesion["mask"].startswith("data:image/png;base64,")
+    assert lesion["severity"] == pytest.approx(1)
+    segmenter = client.app.state.segmenter  # type: ignore[attr-defined]
+    diagnose(client, headers, photo((220, 0, 0)))
+    assert client.app.state.segmenter is segmenter  # type: ignore[attr-defined]
 
 
 def test_diagnose_marks_uncertain_answer(
@@ -103,7 +131,7 @@ def test_requires_login(client: TestClient) -> None:
 def test_without_model_gives_503(
     client: TestClient, headers: dict[str, str], tmp_path: Path
 ) -> None:
-    use_model(client, tmp_path / "missing.onnx")
+    use_models(client, tmp_path / "missing.onnx", tmp_path / "no.onnx")
 
     result = diagnose(client, headers, photo((255, 0, 0)))
 

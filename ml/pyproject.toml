@@ -79,6 +79,7 @@ module = [
     "vitiguard_ml.segmentation",
     "vitiguard_ml.explain",
     "vitiguard_ml.experiments",
+    "vitiguard_ml.export_server",
 ]
 disallow_subclassing_any = false
 disallow_untyped_decorators = false

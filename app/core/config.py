@@ -80,6 +80,8 @@ class Settings(BaseSettings):
     # Модель диагностики по фото листа (ONNX, ml/pr-010). Рядом лежит файл с тем
     # же именем и расширением .json: название модели, классы и размер входа
     diagnosis_model_path: Path = Path("models/diagnosis.onnx")
+    # Сегментация поражения (U-Net, ml/pr-013); без неё диагноз ставится без маски
+    lesion_model_path: Path = Path("models/lesion.onnx")
 
     @model_validator(mode="after")
     def check_secret_key(self) -> Self:

@@ -6,9 +6,10 @@ from fastapi.concurrency import run_in_threadpool
 from app.api.deps import CurrentUserDep, SettingsDep
 from app.core.errors import PayloadTooLargeError, ServiceUnavailableError
 from app.ml.classifier import LeafClassifier
-from app.schemas.diagnosis import DiagnosisRead, DiseaseProbability
+from app.ml.segmentation import LesionSegmenter
+from app.schemas.diagnosis import DiagnosisRead
 from app.schemas.errors import ErrorResponse
-from app.services.diagnosis import read_leaf_image
+from app.services.diagnosis import analyze_leaf, read_leaf_image
 
 router = APIRouter(
     prefix="/ai",
@@ -17,10 +18,6 @@ router = APIRouter(
 )
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
-# Ниже этой вероятности ответ помечается как неуверенный. На полевых снимках
-# модели ошибаются заметно чаще, чем на лабораторных (ml/pr-010), и агроному
-# важно видеть, когда ответу нельзя доверять без проверки
-LOW_CONFIDENCE = 0.6
 
 
 def get_classifier(request: Request, settings: SettingsDep) -> LeafClassifier:
@@ -32,6 +29,15 @@ def get_classifier(request: Request, settings: SettingsDep) -> LeafClassifier:
         classifier = LeafClassifier(settings.diagnosis_model_path)
         request.app.state.classifier = classifier
     return classifier
+
+
+def get_segmenter(request: Request, settings: SettingsDep) -> LesionSegmenter | None:
+    """Сегментация необязательна: без её модели диагноз ставится, но без маски."""
+    segmenter: LesionSegmenter | None = getattr(request.app.state, "segmenter", None)
+    if segmenter is None and settings.lesion_model_path.exists():
+        segmenter = LesionSegmenter(settings.lesion_model_path)
+        request.app.state.segmenter = segmenter
+    return segmenter
 
 
 @router.post(
@@ -58,17 +64,7 @@ async def diagnose(
         raise PayloadTooLargeError("Файл больше 10 МБ")
     leaf = read_leaf_image(data)
     classifier = get_classifier(request, settings)
-    # Классификация занимает десятки миллисекунд процессора: в отдельном потоке
-    # она не задерживает обработку других запросов
-    predictions = await run_in_threadpool(classifier.predict, leaf)
-    best = predictions[0]
-    return DiagnosisRead(
-        model=classifier.name,
-        disease=best.disease,
-        confidence=round(best.probability, 4),
-        low_confidence=best.probability < LOW_CONFIDENCE,
-        top=[
-            DiseaseProbability(disease=p.disease, probability=round(p.probability, 4))
-            for p in predictions[:top_k]
-        ],
-    )
+    segmenter = get_segmenter(request, settings)
+    # Модели занимают процессор на десятки и сотни миллисекунд: в отдельном
+    # потоке они не задерживают обработку других запросов
+    return await run_in_threadpool(analyze_leaf, leaf, classifier, segmenter, top_k)

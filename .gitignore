@@ -21,3 +21,4 @@ Thumbs.db
 # Данные и результаты обучения хранятся вне git
 ml/data/
 ml/artifacts/
+ml/results/

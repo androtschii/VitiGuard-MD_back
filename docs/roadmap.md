@@ -152,7 +152,7 @@ pr-073 и pr-074 лучше сделать раньше остального с�
 
 ### Классификация и объяснимость
 
-- [ ] ml/pr-006 — Пайплайн обучения: transfer learning, early stopping, логирование экспериментов.
+- [x] ml/pr-006 — Пайплайн обучения: transfer learning, early stopping, логирование экспериментов.
 - [ ] ml/pr-007 — Обучение ResNet-50.
 - [ ] ml/pr-008 — Обучение EfficientNet.
 - [ ] ml/pr-009 — Обучение Vision Transformer.

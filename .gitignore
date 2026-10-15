@@ -22,3 +22,6 @@ Thumbs.db
 ml/data/
 ml/artifacts/
 ml/results/
+
+# Веса моделей не хранятся в git (см. models/README.md)
+/models/*.onnx

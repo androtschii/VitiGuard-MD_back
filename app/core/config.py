@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Self
 
 from pydantic import Field, PostgresDsn, RedisDsn, SecretStr, model_validator
@@ -76,6 +77,9 @@ class Settings(BaseSettings):
     max_scene_cloud_cover: float = Field(default=10, ge=0, le=100)
     # Таймаут запросов к внешним сервисам, секунды
     external_http_timeout: float = Field(default=10, gt=0)
+    # Модель диагностики по фото листа (ONNX, ml/pr-010). Рядом лежит файл с тем
+    # же именем и расширением .json: название модели, классы и размер входа
+    diagnosis_model_path: Path = Path("models/diagnosis.onnx")
 
     @model_validator(mode="after")
     def check_secret_key(self) -> Self:

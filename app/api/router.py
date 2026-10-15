@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.routes import (
+    ai,
     auth,
     info,
     osm,
@@ -20,3 +21,4 @@ api_router.include_router(varieties.router)
 api_router.include_router(osm.router)
 api_router.include_router(regions.router)
 api_router.include_router(weather.router)
+api_router.include_router(ai.router)

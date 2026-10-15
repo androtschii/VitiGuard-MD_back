@@ -44,6 +44,22 @@ class ExternalServiceError(AppError):
     status_code = 502
 
 
+class PayloadTooLargeError(AppError):
+    status_code = 413
+
+
+class UnsupportedMediaError(AppError):
+    """Файл не того формата: например, вместо фото листа прислали PDF."""
+
+    status_code = 415
+
+
+class ServiceUnavailableError(AppError):
+    """Сервис временно не может выполнить запрос: например, модель не загружена."""
+
+    status_code = 503
+
+
 class UnauthorizedError(AppError):
     """Нет действительных учётных данных: токен отсутствует, подделан или просрочен."""
 

@@ -13,6 +13,8 @@ dependencies = [
     "fastapi>=0.142.2",
     "geoalchemy2>=0.20.0",
     "httpx2>=2.13.1",
+    "onnxruntime>=1.30",
+    "pillow>=12.0",
     "pwdlib[argon2]>=0.3.1",
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.15.1",
@@ -68,6 +70,11 @@ plugins = ["pydantic.mypy"]
 module = "shapefile"
 ignore_missing_imports = true
 
+# У onnxruntime и onnx нет аннотаций типов
+[[tool.mypy.overrides]]
+module = ["onnxruntime.*", "onnx.*"]
+ignore_missing_imports = true
+
 [tool.pydantic-mypy]
 init_forbid_extra = true
 init_typed = true
@@ -77,6 +84,7 @@ dev = [
     "black>=26.10.0",
     "celery-types>=0.26.0",
     "mypy>=2.4.0",
+    "onnx>=1.23",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",

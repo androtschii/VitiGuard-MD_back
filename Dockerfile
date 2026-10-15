@@ -18,6 +18,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY alembic.ini ./
 COPY migrations ./migrations
 COPY app ./app
+COPY models ./models
 
 RUN useradd --system --uid 10001 vitiguard
 USER vitiguard

@@ -21,6 +21,7 @@ configs/           параметры экспериментов (base.yaml и �
 src/vitiguard_ml/  код: конфиги, фиксация seed, дальше — данные, обучение, оценка
 tests/             тесты
 data/              наборы данных (не в git)
+notebooks/         ноутбук обучения в Google Colab
 artifacts/         веса, метрики, графики (не в git)
 ```
 
@@ -35,6 +36,18 @@ uv run python -m vitiguard_ml.data.hermos         # полевой тестов�
 ```
 
 Каждый набор подготавливается в `data/processed/<источник>/<класс>/` и описывается манифестом `manifest.csv`: путь, класс, источник, SHA-256, перцептивный хэш dHash, ширина, высота.
+
+## Обучение и оценка
+
+```bash
+uv run python -m vitiguard_ml.experiments                       # все этапы
+uv run python -m vitiguard_ml.experiments --stages classify --models efficientnet_b0
+uv run python -m vitiguard_ml.experiments --limit 24 --epochs 1 --no-pretrained  # проверка запуска
+```
+
+Этапы: `classify` — обучение и сравнение ResNet-50, EfficientNet-B0 и ViT-B/16 на тестовой выборке и полевом наборе HERMOS; `explain` — Grad-CAM; `segment` — маски поражения OpenCV и U-Net; `export` — лучшая модель в ONNX. Результаты — в `--out` (по умолчанию `results/`): `results.json`, рисунки в `figures/`, веса в `models/`.
+
+На GPU — ноутбук `notebooks/train_colab.ipynb` для Google Colab: архив `ml/` с `data/processed` загружается на Google Диск, ноутбук распаковывает его, ставит зависимости, запускает этапы и сохраняет результаты на Диск.
 
 ## Воспроизводимость
 

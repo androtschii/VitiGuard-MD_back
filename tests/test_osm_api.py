@@ -202,6 +202,7 @@ def test_vineyard_context(
         "osm_overlap_ratio": 0,
         "osm_vineyards_within_1km": 0,
         "nearest_osm_distance_m": pytest.approx(36_000, rel=0.05),
+        "district": alone["district"],
     }
 
 

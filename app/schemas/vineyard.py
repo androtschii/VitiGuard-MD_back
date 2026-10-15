@@ -7,6 +7,7 @@ from pydantic import AfterValidator, Field, field_validator
 from app.models.variety import BerryColor
 from app.schemas.base import EntityResponse, RequestSchema, ResponseSchema
 from app.schemas.geojson import AreaGeometry, MultiPolygonRead
+from app.schemas.region import DistrictRef
 
 
 def _not_in_future(year: int) -> int:
@@ -94,3 +95,5 @@ class VineyardContextRead(ResponseSchema):
     osm_overlap_ratio: float = Field(ge=0, le=1)
     osm_vineyards_within_1km: int = Field(ge=0)
     nearest_osm_distance_m: float | None
+    # Район, в котором лежит участок; None — за пределами Молдовы
+    district: DistrictRef | None

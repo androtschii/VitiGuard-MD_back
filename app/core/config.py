@@ -70,6 +70,9 @@ class Settings(BaseSettings):
     open_meteo_archive_url: str = "https://archive-api.open-meteo.com/v1/archive"
     # Каталог снимков Copernicus Data Space Ecosystem (STAC API): поиск без учётной записи
     copernicus_stac_url: str = "https://stac.dataspace.copernicus.eu/v1"
+    # Те же снимки Sentinel-2 L2A в открытом хранилище AWS: каналы читаются без
+    # учётной записи и только в окне участка (pr-059)
+    earth_search_url: str = "https://earth-search.aws.element84.com/v1"
     overpass_url: str = "https://overpass-api.de/api/interpreter"
     # Выгрузка виноградников всей страны занимает десятки секунд
     overpass_timeout: int = 180

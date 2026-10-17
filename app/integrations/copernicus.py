@@ -5,10 +5,10 @@
 лежат в хранилище eodata и скачиваются с учётной записью (pr-059)."""
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx2 as httpx
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import Settings
 from app.core.errors import ExternalServiceError
@@ -44,6 +44,8 @@ class Scene(BaseModel):
 
 class _Asset(BaseModel):
     href: str
+    # Тип данных, масштаб и смещение значений канала (расширение STAC raster)
+    raster_bands: list[dict[str, Any]] = Field(default=[], alias="raster:bands")
 
 
 class _Properties(BaseModel):
@@ -102,10 +104,21 @@ def _iso(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-class CopernicusClient:
+class StacClient[S]:
+    """Постраничный поиск в каталоге STAC. Каталоги различаются адресом,
+    коллекцией и тем, как из записи каталога получается снимок."""
+
+    collection: ClassVar[str] = COLLECTION
+
     def __init__(self, http: httpx.AsyncClient, settings: Settings) -> None:
         self._http = http
         self._settings = settings
+
+    def _search_url(self) -> str:
+        raise NotImplementedError
+
+    def _parse(self, feature: _Feature) -> S:
+        raise NotImplementedError
 
     async def search(
         self,
@@ -113,11 +126,12 @@ class CopernicusClient:
         start: datetime,
         end: datetime,
         extra_filter: dict[str, Any] | None = None,
-    ) -> list[Scene]:
+        extra_body: dict[str, Any] | None = None,
+    ) -> list[S]:
         """Снимки, пересекающие geometry (GeoJSON, WGS 84), за период, по
         возрастанию даты. Страницы каталога загружаются по ссылкам next."""
         body: dict[str, Any] = {
-            "collections": [COLLECTION],
+            "collections": [self.collection],
             "intersects": geometry,
             "datetime": f"{_iso(start)}/{_iso(end)}",
             "limit": PAGE_SIZE,
@@ -126,17 +140,19 @@ class CopernicusClient:
         if extra_filter is not None:
             body["filter-lang"] = "cql2-json"
             body["filter"] = extra_filter
+        # Каталоги поддерживают разные расширения фильтрации: CQL2 или query
+        body.update(extra_body or {})
 
-        scenes: list[Scene] = []
+        scenes: list[S] = []
         request: tuple[str, str, dict[str, Any] | None] = (
             "POST",
-            f"{self._settings.copernicus_stac_url}/search",
+            self._search_url(),
             body,
         )
         while True:
             page = await self._fetch(*request)
             try:
-                scenes.extend(_scene(feature) for feature in page.features)
+                scenes.extend(self._parse(feature) for feature in page.features)
             except (ValidationError, KeyError) as error:
                 raise ExternalServiceError(UNAVAILABLE) from error
             if len(scenes) > MAX_SCENES:
@@ -159,3 +175,14 @@ class CopernicusClient:
         except (httpx.HTTPError, ValueError) as error:
             # ValidationError — подкласс ValueError
             raise ExternalServiceError(UNAVAILABLE) from error
+
+
+class CopernicusClient(StacClient[Scene]):
+    """Каталог Copernicus Data Space Ecosystem: поиск без учётной записи, а файлы
+    каналов — в хранилище eodata, доступном только с ней."""
+
+    def _search_url(self) -> str:
+        return f"{self._settings.copernicus_stac_url}/search"
+
+    def _parse(self, feature: _Feature) -> Scene:
+        return _scene(feature)

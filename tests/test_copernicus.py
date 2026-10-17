@@ -169,3 +169,14 @@ async def test_dependency_uses_the_shared_http_client() -> None:
         client = get_copernicus(request, SETTINGS)  # type: ignore[arg-type]
 
         assert client._http is http
+
+
+def test_base_client_requires_catalog_specifics() -> None:
+    client: copernicus.StacClient[object] = copernicus.StacClient(
+        httpx.AsyncClient(), SETTINGS
+    )
+
+    with pytest.raises(NotImplementedError):
+        client._search_url()
+    with pytest.raises(NotImplementedError):
+        client._parse(copernicus._Feature(id="x", properties={}, assets={}))

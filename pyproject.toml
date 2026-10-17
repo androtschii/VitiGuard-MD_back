@@ -20,6 +20,7 @@ dependencies = [
     "pyjwt>=2.15.1",
     "pyshp>=3.1.6",
     "python-multipart>=0.0.32",
+    "rasterio>=1.5",
     "sqlalchemy[asyncio]>=2.1.3",
     "uvicorn[standard]>=0.54.0",
 ]
@@ -70,9 +71,9 @@ plugins = ["pydantic.mypy"]
 module = "shapefile"
 ignore_missing_imports = true
 
-# У onnxruntime и onnx нет аннотаций типов
+# У onnxruntime, onnx и rasterio нет аннотаций типов
 [[tool.mypy.overrides]]
-module = ["onnxruntime.*", "onnx.*"]
+module = ["onnxruntime.*", "onnx.*", "rasterio.*"]
 ignore_missing_imports = true
 
 [tool.pydantic-mypy]

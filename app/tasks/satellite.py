@@ -10,6 +10,8 @@ from app.db.session import create_engine, create_session_factory
 from app.integrations.earth_search import EarthSearchClient
 from app.services.vegetation_history import process_vineyard
 
+SOFT_TIME_LIMIT = 30 * 60
+
 
 async def run_vegetation(
     settings: Settings, vineyard_id: str, start: str, end: str
@@ -34,7 +36,13 @@ async def run_vegetation(
 
 
 # Сезон — десятки снимков по несколько секунд: только в фоне. Аргументы —
-# строки, чтобы задача сериализовалась в JSON
-@shared_task(name="satellite.process_vineyard")
+# строки, чтобы задача сериализовалась в JSON. Общего лимита в 5 минут на
+# сезон не хватает (70 снимков — около 10 минут), поэтому у задачи свой. Если
+# задача всё же оборвётся, повторный запуск продолжит с необработанных снимков
+@shared_task(
+    name="satellite.process_vineyard",
+    soft_time_limit=SOFT_TIME_LIMIT,
+    time_limit=SOFT_TIME_LIMIT + 60,
+)
 def process_vineyard_task(vineyard_id: str, start: str, end: str) -> dict[str, int]:
     return asyncio.run(run_vegetation(get_settings(), vineyard_id, start, end))

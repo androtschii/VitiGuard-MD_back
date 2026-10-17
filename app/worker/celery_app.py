@@ -7,6 +7,7 @@ from app.core.config import Settings, get_settings
 TASK_MODULES = [
     "app.tasks.mail",
     "app.tasks.osm",
+    "app.tasks.risk",
     "app.tasks.satellite",
     "app.tasks.system",
 ]
@@ -38,6 +39,14 @@ def create_celery(settings: Settings) -> Celery:
         task_time_limit=settings.celery_task_time_limit,
         # Результаты нужны вызывающему коду недолго, потом их удаляет Redis
         result_expires=3600,
+        # Расписание Celery Beat: риск всех участков — по свежей погоде и
+        # прогнозу каждые несколько часов (Open-Meteo обновляет прогноз раз в час)
+        beat_schedule={
+            "risk-refresh": {
+                "task": "risk.refresh_all",
+                "schedule": settings.risk_refresh_hours * 3600,
+            },
+        },
         # Redis возвращает неподтверждённую задачу в очередь по истечении этого
         # срока: он должен быть больше самой долгой задачи
         broker_transport_options={"visibility_timeout": 3600},

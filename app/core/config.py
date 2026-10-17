@@ -81,6 +81,8 @@ class Settings(BaseSettings):
     # Для расчёта индексов отсев по облачности сцены мягче: облака над самим
     # участком проверяются по маске SCL, а сцена с 40 % облаков часто чиста над ним
     vegetation_max_scene_cloud_cover: float = Field(default=40, ge=0, le=100)
+    # Как часто Celery Beat пересчитывает риск всех участков, часы
+    risk_refresh_hours: float = Field(default=6, gt=0)
     # Таймаут запросов к внешним сервисам, секунды
     external_http_timeout: float = Field(default=10, gt=0)
     # Модель диагностики по фото листа (ONNX, ml/pr-010). Рядом лежит файл с тем

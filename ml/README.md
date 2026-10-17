@@ -49,6 +49,17 @@ uv run python -m vitiguard_ml.experiments --limit 24 --epochs 1 --no-pretrained 
 
 На GPU — ноутбук `notebooks/train_colab.ipynb` для Google Colab: архив `ml/` с `data/processed` загружается на Google Диск, ноутбук распаковывает его, ставит зависимости, запускает этапы и сохраняет результаты на Диск.
 
+## Прогноз риска
+
+```bash
+# из корня репозитория: архив погоды, размеченный агромоделями сервера
+uv run python -m app.cli.risk_dataset --out ml/data/raw/risk
+# из ml/: LightGBM и LSTM против базовых линий, проверка по годам 2021-2025
+uv run --group train python -m vitiguard_ml.risk.experiment
+```
+
+Результаты — `results/risk/metrics.json` и графики PR-AUC и F1 по горизонтам.
+
 ## Воспроизводимость
 
 - все параметры эксперимента — в конфиге, опечатка в имени параметра — ошибка;

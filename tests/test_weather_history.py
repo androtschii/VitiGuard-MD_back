@@ -214,3 +214,19 @@ async def test_point_of_deleted_vineyard_is_not_found(session: AsyncSession) -> 
 
     with pytest.raises(NotFoundError, match="Участок не найден"):
         await vineyard_point(session, vineyard)
+
+
+async def test_forecast_requests_recent_days_and_week_ahead() -> None:
+    requests: list[httpx.Request] = []
+    client = client_returning(
+        archive(["2026-10-17T00:00", "2026-10-17T01:00"], [9.0, None]), requests
+    )
+
+    samples = await client.forecast(47.14, 28.86, past_days=7, forecast_days=7)
+
+    assert [s.temperature_c for s in samples] == [9.0]
+    assert str(requests[0].url).startswith("https://api.open-meteo.com/v1/forecast")
+    params = requests[0].url.params
+    assert params["past_days"] == params["forecast_days"] == "7"
+    assert params["hourly"] == "temperature_2m,relative_humidity_2m,precipitation"
+    assert params["timezone"] == "UTC"

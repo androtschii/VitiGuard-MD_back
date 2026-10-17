@@ -8,6 +8,10 @@ ENV PYTHONUNBUFFERED=1 \
     UV_PYTHON_DOWNLOADS=never \
     PATH="/app/.venv/bin:$PATH"
 
+# Колесо rasterio несёт GDAL с собой, но берёт из системы libexpat (разбор XML
+# метаданных GeoTIFF), которой нет в slim-образе
+RUN apt-get update     && apt-get install -y --no-install-recommends libexpat1     && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Зависимости — отдельным слоем: он пересобирается только при изменении uv.lock

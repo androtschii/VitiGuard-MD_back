@@ -1,13 +1,20 @@
 import uuid
+from datetime import UTC, date, datetime, time
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, UploadFile, status
 
 from app.api.deps import CurrentUserDep, PageParamsDep, SessionDep
 from app.core.errors import BadRequestError
+from app.models.satellite import IndexType
 from app.repositories.vineyard import VineyardRepository, VineyardView
 from app.schemas.errors import ErrorResponse
 from app.schemas.pagination import Page
+from app.schemas.vegetation import (
+    IndexValueRead,
+    VegetationObservationRead,
+    VegetationRefreshStarted,
+)
 from app.schemas.vineyard import (
     BoundaryImportResult,
     NearbyQuery,
@@ -21,11 +28,14 @@ from app.services.boundary_export import ExportFormat, to_geojson, to_shapefile_
 from app.services.boundary_files import parse_boundaries
 from app.services.osm import vineyard_context
 from app.services.region import district_of
+from app.services.vegetation_history import vegetation_history
 from app.services.vineyard import (
     ensure_variety_exists,
     import_boundaries,
     validate_geometry,
 )
+from app.tasks.satellite import process_vineyard_task
+from app.worker.celery_app import celery_app
 
 # Контуры хозяйства — килобайты; ограничение защищает от чтения в память
 # многомегабайтного файла
@@ -271,3 +281,83 @@ async def read_vineyard_context(
     context = await vineyard_context(session, view.vineyard)
     district = await district_of(session, view.vineyard)
     return VineyardContextRead.model_validate({**vars(context), "district": district})
+
+
+# Больше года за раз не обрабатывается: сезон — десятки снимков, а
+# многолетний ряд занял бы обработчик задач на часы
+MAX_VEGETATION_DAYS = 366
+
+
+def season_start(today: date) -> date:
+    """Начало вегетационного периода — 1 марта текущего года (до марта —
+    прошлого): раньше лоза без листьев, и индексы показывают траву и почву."""
+    year = today.year if today.month >= 3 else today.year - 1
+    return date(year, 3, 1)
+
+
+@router.post(
+    "/{vineyard_id}/vegetation/refresh",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Расчёт NDVI и NDRE по новым снимкам Sentinel-2",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse},
+        status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
+    },
+)
+async def refresh_vegetation(
+    vineyard_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+    start: Annotated[date | None, Query(description="По умолчанию — 1 марта")] = None,
+    end: Annotated[date | None, Query(description="По умолчанию — сегодня")] = None,
+) -> VegetationRefreshStarted:
+    await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
+    today = datetime.now(UTC).date()
+    first = start or season_start(today)
+    last = end or today
+    if first > last:
+        raise BadRequestError("Начало периода должно быть не позже конца")
+    if (last - first).days > MAX_VEGETATION_DAYS:
+        raise BadRequestError("Период — не больше года")
+    task = celery_app.send_task(
+        process_vineyard_task.name,
+        args=[
+            str(vineyard_id),
+            datetime.combine(first, time.min, UTC).isoformat(),
+            datetime.combine(last, time.max, UTC).isoformat(),
+        ],
+    )
+    return VegetationRefreshStarted(task_id=task.id)
+
+
+@router.get(
+    "/{vineyard_id}/vegetation",
+    summary="История NDVI и NDRE участка",
+    responses={status.HTTP_404_NOT_FOUND: {"model": ErrorResponse}},
+)
+async def read_vegetation(
+    vineyard_id: uuid.UUID, user: CurrentUserDep, session: SessionDep
+) -> list[VegetationObservationRead]:
+    await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
+    observations = []
+    for scan in await vegetation_history(session, vineyard_id):
+        values = {
+            index.index_type: IndexValueRead(
+                mean=index.mean_value,
+                min=index.min_value,
+                max=index.max_value,
+                std=index.std_value,
+            )
+            for index in scan.indices
+        }
+        observations.append(
+            VegetationObservationRead(
+                acquired_at=scan.acquired_at,
+                platform=scan.platform,
+                scene_cloud_cover=scan.cloud_cover,
+                parcel_cloud_cover=scan.parcel_cloud_cover,
+                ndvi=values.get(IndexType.NDVI),
+                ndre=values.get(IndexType.NDRE),
+            )
+        )
+    return observations

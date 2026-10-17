@@ -26,6 +26,9 @@ class SatelliteScan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         # Один и тот же снимок по участку не обрабатывается дважды
         UniqueConstraint("vineyard_id", "product_id"),
         CheckConstraint("cloud_cover BETWEEN 0 AND 100", name="cloud_cover_range"),
+        CheckConstraint(
+            "parcel_cloud_cover BETWEEN 0 AND 100", name="parcel_cloud_cover_range"
+        ),
     )
 
     vineyard_id: Mapped[uuid.UUID] = mapped_column(
@@ -35,6 +38,11 @@ class SatelliteScan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     product_id: Mapped[str] = mapped_column(String(255))
     acquired_at: Mapped[datetime]
     cloud_cover: Mapped[float]
+    # Облачность над самим участком по маске SCL, %: облачность сцены 110 × 110 км
+    # о конкретном участке почти ничего не говорит
+    parcel_cloud_cover: Mapped[float | None]
+    # Спутник: Sentinel-2A и 2B бывают над участком в один день
+    platform: Mapped[str | None] = mapped_column(String(20))
     status: Mapped[ProcessingStatus] = mapped_column(
         string_enum(ProcessingStatus, "scan_status"),
         server_default=ProcessingStatus.PENDING.value,

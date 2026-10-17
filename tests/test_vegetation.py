@@ -1,94 +1,16 @@
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
-import rasterio
-from rasterio.transform import from_origin
-from rasterio.warp import transform_geom
+from raster_scene import CLEAR, CLOUD, PARCEL, make_scene
 
-from app.integrations.earth_search import Band, EarthScene
 from app.services.vegetation import (
     ParcelBands,
     compute_indices,
     normalized_difference,
     read_parcel,
 )
-
-CRS = "EPSG:32635"
-# Квадрат около 100 × 100 м у Крикова
-PARCEL = {
-    "type": "Polygon",
-    "coordinates": [
-        [
-            [28.8600, 47.1400],
-            [28.8613, 47.1400],
-            [28.8613, 47.1409],
-            [28.8600, 47.1409],
-            [28.8600, 47.1400],
-        ]
-    ],
-}
-CLEAR, CLOUD = 4, 9
-
-
-def write_band(
-    path: Path, value: int | np.ndarray, resolution: int, origin: tuple[float, float]
-) -> str:
-    size = 400 // resolution
-    data = (
-        np.full((size, size), value, dtype=np.uint16) if np.isscalar(value) else value
-    )
-    with rasterio.open(
-        path,
-        "w",
-        driver="GTiff",
-        width=size,
-        height=size,
-        count=1,
-        dtype="uint16",
-        crs=CRS,
-        transform=from_origin(*origin, resolution, resolution),
-    ) as dataset:
-        dataset.write(np.asarray(data, dtype=np.uint16), 1)
-    return str(path)
-
-
-def make_scene(
-    tmp_path: Path,
-    scl: int | np.ndarray = CLEAR,
-    offset: float = 0.0,
-    red: int = 500,
-) -> EarthScene:
-    """Снимок из локальных GeoTIFF вокруг участка: красный 0,05, ближний ИК 0,3,
-    red edge 0,1, узкий ближний ИК 0,3 (при scale 0,0001 и нулевом смещении)."""
-    local = transform_geom("EPSG:4326", CRS, PARCEL)
-    xs = [x for x, _ in local["coordinates"][0]]
-    ys = [y for _, y in local["coordinates"][0]]
-    # Растр 400 × 400 м с запасом вокруг участка, углы — по сетке 20 м
-    origin = (
-        float(np.floor(min(xs) / 20) * 20 - 140),
-        float(np.ceil(max(ys) / 20) * 20 + 140),
-    )
-    values = {"B04": (red, 10), "B08": (3000, 10), "B05": (1000, 20), "B8A": (3000, 20)}
-    bands = {
-        name: Band(
-            href=write_band(tmp_path / f"{name}.tif", value, resolution, origin),
-            scale=0.0001,
-            offset=offset,
-        )
-        for name, (value, resolution) in values.items()
-    }
-    bands["SCL"] = Band(href=write_band(tmp_path / "SCL.tif", scl, 20, origin))
-    return EarthScene(
-        product_id="S2A_35TPN_20260829_1_L2A",
-        acquired_at=datetime(2026, 8, 29, 9, 17, tzinfo=UTC),
-        cloud_cover=0.0,
-        platform="sentinel-2a",
-        tile="35TPN",
-        bands=bands,
-    )
 
 
 def test_indices_of_clear_parcel(tmp_path: Path) -> None:

@@ -8,6 +8,8 @@ from app.integrations.open_meteo import WeatherSample
 from app.models.weather import WeatherData
 from app.repositories.base import Repository
 
+BATCH = 1000
+
 
 class WeatherRepository(Repository[WeatherData]):
     model = WeatherData
@@ -36,16 +38,19 @@ class WeatherRepository(Repository[WeatherData]):
             }
             for sample in samples
         ]
-        statement = insert(WeatherData).values(rows)
-        statement = statement.on_conflict_do_update(
-            index_elements=["vineyard_id", "observed_at"],
-            set_={
-                "temperature_c": statement.excluded.temperature_c,
-                "relative_humidity": statement.excluded.relative_humidity,
-                "precipitation_mm": statement.excluded.precipitation_mm,
-                "is_forecast": statement.excluded.is_forecast,
-                "updated_at": func.now(),
-            },
-        )
-        await self.session.execute(statement)
+        # Пачками: у PostgreSQL не больше 32 767 параметров в запросе, а год
+        # почасовой погоды — почти 9 тысяч строк по 6 значений
+        for start in range(0, len(rows), BATCH):
+            statement = insert(WeatherData).values(rows[start : start + BATCH])
+            statement = statement.on_conflict_do_update(
+                index_elements=["vineyard_id", "observed_at"],
+                set_={
+                    "temperature_c": statement.excluded.temperature_c,
+                    "relative_humidity": statement.excluded.relative_humidity,
+                    "precipitation_mm": statement.excluded.precipitation_mm,
+                    "is_forecast": statement.excluded.is_forecast,
+                    "updated_at": func.now(),
+                },
+            )
+            await self.session.execute(statement)
         return len(rows)

@@ -104,29 +104,26 @@ class OpenMeteoClient:
                 "timezone": "UTC",
             },
         )
-        try:
-            hourly = _HourlyResponse.model_validate(data).hourly
-        except ValidationError as error:
-            raise ExternalServiceError(UNAVAILABLE) from error
-        samples = []
-        for moment, temperature, humidity, precipitation in zip(
-            hourly.time,
-            hourly.temperature_2m,
-            hourly.relative_humidity_2m,
-            hourly.precipitation,
-            strict=True,
-        ):
-            if temperature is None or humidity is None or precipitation is None:
-                continue
-            samples.append(
-                WeatherSample(
-                    observed_at=_as_utc(moment),
-                    temperature_c=temperature,
-                    relative_humidity=humidity,
-                    precipitation_mm=precipitation,
-                )
-            )
-        return samples
+        return _hourly_samples(data)
+
+    async def forecast(
+        self, latitude: float, longitude: float, past_days: int, forecast_days: int
+    ) -> list[WeatherSample]:
+        """Почасовая погода за последние past_days дней и прогноз на
+        forecast_days вперёд одним запросом. Архив приходит с задержкой в
+        несколько дней — последние дни берутся отсюда."""
+        data = await self._get(
+            self._settings.open_meteo_forecast_url,
+            {
+                "latitude": latitude,
+                "longitude": longitude,
+                "past_days": past_days,
+                "forecast_days": forecast_days,
+                "hourly": VARIABLES,
+                "timezone": "UTC",
+            },
+        )
+        return _hourly_samples(data)
 
     async def _get(self, url: str, params: dict[str, Any]) -> Any:
         """Запрос к Open-Meteo. Сетевой сбой, таймаут, ошибка сервиса или
@@ -142,3 +139,31 @@ class OpenMeteoClient:
 def _as_utc(moment: datetime) -> datetime:
     # С timezone=UTC сервис отдаёт время без пояса; хранить его надо явно в UTC
     return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment
+
+
+def _hourly_samples(data: Any) -> list[WeatherSample]:
+    """Часы, для которых нет значений, пропускаются: ноль вместо пропуска
+    исказил бы агромодели — «0 мм осадков» и «нет данных» — не одно и то же."""
+    try:
+        hourly = _HourlyResponse.model_validate(data).hourly
+    except ValidationError as error:
+        raise ExternalServiceError(UNAVAILABLE) from error
+    samples = []
+    for moment, temperature, humidity, precipitation in zip(
+        hourly.time,
+        hourly.temperature_2m,
+        hourly.relative_humidity_2m,
+        hourly.precipitation,
+        strict=True,
+    ):
+        if temperature is None or humidity is None or precipitation is None:
+            continue
+        samples.append(
+            WeatherSample(
+                observed_at=_as_utc(moment),
+                temperature_c=temperature,
+                relative_humidity=humidity,
+                precipitation_mm=precipitation,
+            )
+        )
+    return samples

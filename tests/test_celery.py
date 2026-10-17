@@ -67,3 +67,11 @@ def test_worker_runs_task_through_redis(celery_with_worker: Celery) -> None:
     result = celery_with_worker.send_task("system.ping")
 
     assert result.get(timeout=15) == "pong"
+
+
+def test_vegetation_task_has_season_time_limit() -> None:
+    from app.tasks.satellite import process_vineyard_task
+
+    # Общих 5 минут на сезон снимков не хватает
+    assert process_vineyard_task.soft_time_limit == 30 * 60
+    assert process_vineyard_task.time_limit > process_vineyard_task.soft_time_limit

@@ -6,6 +6,7 @@ from app.api.routes import (
     info,
     osm,
     regions,
+    risks,
     users,
     varieties,
     vineyards,
@@ -20,5 +21,6 @@ api_router.include_router(vineyards.router)
 api_router.include_router(varieties.router)
 api_router.include_router(osm.router)
 api_router.include_router(regions.router)
+api_router.include_router(risks.router)
 api_router.include_router(weather.router)
 api_router.include_router(ai.router)

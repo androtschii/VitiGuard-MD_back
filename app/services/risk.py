@@ -5,7 +5,9 @@
 задержкой в несколько дней. По этому ряду считаются модели, и риск сохраняется
 по дням: прошедшие дни — факт, следующие семь — прогноз по прогнозу погоды."""
 
+import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import func, select
@@ -13,6 +15,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.open_meteo import OpenMeteoClient, WeatherSample
+from app.models.enums import Disease, RiskLevel
 from app.models.vineyard import Vineyard
 from app.models.weather import DiseaseRisk
 from app.repositories.weather import WeatherRepository
@@ -143,3 +146,44 @@ async def season_risk_history(
         .order_by(DiseaseRisk.target_date, DiseaseRisk.method)
     )
     return rows.all()
+
+
+@dataclass(frozen=True)
+class TodayLevels:
+    vineyard_id: uuid.UUID
+    day: date
+    downy: RiskLevel
+    powdery: RiskLevel
+
+
+LEVEL_ORDER = {RiskLevel.LOW: 0, RiskLevel.MEDIUM: 1, RiskLevel.HIGH: 2}
+
+
+async def today_levels(
+    session: AsyncSession, owner_id: uuid.UUID, today: date | None = None
+) -> list[TodayLevels]:
+    """Уровни риска на сегодня по участкам владельца: милдью — худшее из
+    «трёх десяток» и модели Гойданича, оидиум — индекс Gubler-Thomas. Участки
+    без оценки на сегодня (вне сезона, ещё не пересчитаны) не возвращаются."""
+    day = today or local_today()
+    rows = await session.execute(
+        select(DiseaseRisk.vineyard_id, DiseaseRisk.disease, DiseaseRisk.level)
+        .join(Vineyard, Vineyard.id == DiseaseRisk.vineyard_id)
+        .where(Vineyard.owner_id == owner_id, DiseaseRisk.target_date == day)
+    )
+    worst: dict[uuid.UUID, dict[Disease, RiskLevel]] = {}
+    for vineyard_id, disease, level in rows:
+        levels = worst.setdefault(vineyard_id, {})
+        current = levels.get(disease, RiskLevel.LOW)
+        levels[disease] = (
+            level if LEVEL_ORDER[level] > LEVEL_ORDER[current] else current
+        )
+    return [
+        TodayLevels(
+            vineyard_id=vineyard_id,
+            day=day,
+            downy=levels.get(Disease.DOWNY_MILDEW, RiskLevel.LOW),
+            powdery=levels.get(Disease.POWDERY_MILDEW, RiskLevel.LOW),
+        )
+        for vineyard_id, levels in worst.items()
+    ]

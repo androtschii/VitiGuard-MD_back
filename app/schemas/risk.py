@@ -1,3 +1,4 @@
+import uuid
 from datetime import date, datetime
 from typing import Any
 
@@ -18,3 +19,12 @@ class RiskRead(ResponseSchema):
     # Входные значения модели: из чего получилась оценка
     factors: dict[str, Any] | None
     updated_at: datetime
+
+
+class TodayRiskRead(ResponseSchema):
+    """Уровни риска участка на сегодня — для раскраски участков на карте."""
+
+    vineyard_id: uuid.UUID
+    day: date
+    downy: RiskLevel
+    powdery: RiskLevel

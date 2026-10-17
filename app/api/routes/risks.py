@@ -5,8 +5,8 @@ from fastapi import APIRouter, status
 from app.api.deps import CurrentUserDep, OpenMeteoDep, SessionDep
 from app.repositories.vineyard import VineyardRepository
 from app.schemas.errors import ErrorResponse
-from app.schemas.risk import RiskRead
-from app.services.risk import refresh_risks, season_risk_history
+from app.schemas.risk import RiskRead, TodayRiskRead
+from app.services.risk import refresh_risks, season_risk_history, today_levels
 
 router = APIRouter(
     prefix="/vineyards",
@@ -44,3 +44,21 @@ async def refresh_vineyard_risks(
     await refresh_risks(session, open_meteo, view.vineyard)
     rows = await season_risk_history(session, view.vineyard)
     return [RiskRead.model_validate(row) for row in rows]
+
+
+# Отдельный префикс: путь /vineyards/... конфликтовал бы с /vineyards/{id}
+today_router = APIRouter(
+    prefix="/risks",
+    tags=["risks"],
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse}},
+)
+
+
+@today_router.get("/today", summary="Уровни риска на сегодня по моим участкам")
+async def read_today_risks(
+    user: CurrentUserDep, session: SessionDep
+) -> list[TodayRiskRead]:
+    return [
+        TodayRiskRead.model_validate(vars(levels))
+        for levels in await today_levels(session, user.id)
+    ]

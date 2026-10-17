@@ -74,4 +74,4 @@ def test_vegetation_task_has_season_time_limit() -> None:
 
     # Общих 5 минут на сезон снимков не хватает
     assert process_vineyard_task.soft_time_limit == 30 * 60
-    assert process_vineyard_task.time_limit > process_vineyard_task.soft_time_limit
+    assert process_vineyard_task.time_limit == 31 * 60

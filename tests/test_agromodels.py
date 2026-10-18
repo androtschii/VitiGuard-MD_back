@@ -208,3 +208,12 @@ def test_season_risks_run_all_models() -> None:
     assert [r.day for r in infection] == [date(2026, 5, 20), date(2026, 5, 21)]
     incubation = [r for r in risks if r.method == "goidanich" and r.score > 0]
     assert incubation[0].day == date(2026, 5, 21)
+
+
+def test_goidanich_keeps_daily_weather_for_the_chart() -> None:
+    days = [day(date(2026, 6, 1), mean=21.5, rain=7.2)]
+
+    factors = goidanich(days, [])[0].factors
+
+    assert factors["mean_temp"] == 21.5
+    assert factors["precipitation_mm"] == 7.2

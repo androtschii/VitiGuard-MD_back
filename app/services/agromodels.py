@@ -249,7 +249,10 @@ def goidanich(
             }
         else:
             score, level, factors = 0.0, RiskLevel.LOW, {}
+        # Погода дня — для графика температуры и осадков рядом с риском
+        # (frontend/pr-057): модель Гойданича считается весь сезон, каждый день
         factors["mean_temp"] = day.mean_temp
+        factors["precipitation_mm"] = day.precipitation_mm
         risks.append(
             RiskDay(
                 day=day.day,

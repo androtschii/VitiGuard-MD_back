@@ -86,6 +86,7 @@ module = [
     "vitiguard_ml.export_server",
     "vitiguard_ml.risk.models",
     "vitiguard_ml.risk.experiment",
+    "vitiguard_ml.anomaly.experiment",
 ]
 disallow_subclassing_any = false
 disallow_untyped_decorators = false

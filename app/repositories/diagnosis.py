@@ -34,7 +34,12 @@ class DiagnosisRepository(Repository[DiseaseResult]):
             select(DiseaseResult)
             .join(DiseaseResult.image)
             .where(LeafImage.owner_id == owner_id)
-            .options(selectinload(DiseaseResult.image).selectinload(LeafImage.vineyard))
+            .options(
+                selectinload(DiseaseResult.image).selectinload(LeafImage.vineyard),
+                selectinload(DiseaseResult.reviewer),
+            )
+            # Заключение могло измениться в этой же сессии
+            .execution_options(populate_existing=True)
         )
 
     async def list_for_owner(

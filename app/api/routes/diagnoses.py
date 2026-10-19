@@ -1,16 +1,19 @@
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Response, status
 from fastapi.concurrency import run_in_threadpool
 
-from app.api.deps import CurrentUserDep, SessionDep, StorageDep
+from app.api.deps import AgronomistDep, CurrentUserDep, SessionDep, StorageDep
 from app.models.diagnosis import DiseaseResult
 from app.repositories.diagnosis import DiagnosisFilter, DiagnosisRepository
 from app.schemas.diagnosis import (
     DiagnosisQuery,
     DiagnosisRecordRead,
     DiseaseProbability,
+    ReviewRead,
+    ReviewUpdate,
 )
 from app.schemas.errors import ErrorResponse
 from app.schemas.pagination import Page
@@ -32,6 +35,18 @@ def to_record(result: DiseaseResult) -> DiagnosisRecordRead:
     probabilities = sorted(
         (result.probabilities or {}).items(), key=lambda item: item[1], reverse=True
     )
+    review = None
+    if result.expert_class and result.reviewed_at:
+        review = ReviewRead(
+            disease=result.expert_class,
+            comment=result.expert_comment,
+            reviewed_at=result.reviewed_at,
+            reviewer=(
+                (result.reviewer.full_name or result.reviewer.email)
+                if result.reviewer
+                else None
+            ),
+        )
     return DiagnosisRecordRead(
         id=result.id,
         created_at=result.created_at,
@@ -43,6 +58,7 @@ def to_record(result: DiseaseResult) -> DiagnosisRecordRead:
         disease=result.predicted_class or "",
         confidence=result.confidence or 0,
         top=[DiseaseProbability(disease=d, probability=p) for d, p in probabilities],
+        review=review,
     )
 
 
@@ -106,3 +122,49 @@ async def delete_diagnosis(
     await session.delete(image)
     await session.commit()
     await run_in_threadpool(storage.delete, key)
+
+
+# Заключение агронома (pr-052): подтвердить диагноз модели или исправить его.
+# Агроном смотрит свои проверки — фото, которые снял в поле сам
+@router.put(
+    "/{diagnosis_id}/review",
+    summary="Заключение агронома по проверке",
+    responses={
+        **NOT_FOUND,
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+    },
+)
+async def review_diagnosis(
+    diagnosis_id: uuid.UUID,
+    data: ReviewUpdate,
+    user: AgronomistDep,
+    session: SessionDep,
+) -> DiagnosisRecordRead:
+    repository = DiagnosisRepository(session)
+    result = await repository.get_for_owner(user.id, diagnosis_id)
+    result.expert_class = data.disease
+    result.expert_comment = data.comment
+    result.reviewed_by_id = user.id
+    result.reviewed_at = datetime.now(UTC)
+    await session.commit()
+    return to_record(await repository.get_for_owner(user.id, diagnosis_id))
+
+
+@router.delete(
+    "/{diagnosis_id}/review",
+    summary="Отзыв заключения агронома",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        **NOT_FOUND,
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+    },
+)
+async def delete_review(
+    diagnosis_id: uuid.UUID, user: AgronomistDep, session: SessionDep
+) -> None:
+    result = await DiagnosisRepository(session).get_for_owner(user.id, diagnosis_id)
+    result.expert_class = None
+    result.expert_comment = None
+    result.reviewed_by_id = None
+    result.reviewed_at = None
+    await session.commit()

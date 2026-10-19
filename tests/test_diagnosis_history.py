@@ -210,3 +210,76 @@ async def test_failed_commit_removes_photo() -> None:
         )
 
     assert storage.files == {}
+
+
+def login_agronomist(
+    client: TestClient, email: str = "agro@example.md"
+) -> dict[str, str]:
+    credentials = {**CREDENTIALS, "email": email}
+    client.post(
+        "/api/v1/auth/register",
+        json={**credentials, "full_name": "Мария", "role": "agronomist"},
+    )
+    token = client.post("/api/v1/auth/login", json=credentials).json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.integration
+def test_agronomist_reviews_diagnosis(client: TestClient, run_sql: RunSql) -> None:
+    headers = login_agronomist(client)
+    saved = diagnose(client, headers, save="true")
+    url = f"/api/v1/diagnoses/{saved['id']}/review"
+
+    confirmed = client.put(url, headers=headers, json={"disease": "healthy"})
+
+    assert confirmed.status_code == 200
+    review = confirmed.json()["review"]
+    assert review["disease"] == "healthy"
+    assert review["comment"] is None
+    assert review["reviewer"] == "Мария"
+
+    corrected = client.put(
+        url,
+        headers=headers,
+        json={"disease": "downy_mildew", "comment": "Пятна снизу листа"},
+    ).json()["review"]
+    assert corrected["disease"] == "downy_mildew"
+    assert corrected["comment"] == "Пятна снизу листа"
+    listed = client.get("/api/v1/diagnoses", headers=headers).json()["items"][0]
+    assert listed["review"]["disease"] == "downy_mildew"
+    # Модель сказала своё: заключение не меняет её ответ
+    assert listed["disease"] == "healthy"
+
+    # Учётная запись эксперта удалена — заключение остаётся без имени
+    run_sql(
+        f"UPDATE disease_results SET reviewed_by_id = NULL WHERE id = '{saved['id']}'"
+    )
+    listed = client.get("/api/v1/diagnoses", headers=headers).json()["items"][0]
+    assert listed["review"]["reviewer"] is None
+
+    assert client.delete(url, headers=headers).status_code == 204
+    listed = client.get("/api/v1/diagnoses", headers=headers).json()["items"][0]
+    assert listed["review"] is None
+
+
+@pytest.mark.integration
+def test_review_rules(client: TestClient) -> None:
+    grower = login(client)
+    own = diagnose(client, grower, save="true")
+    agronomist = login_agronomist(client)
+    url = f"/api/v1/diagnoses/{own['id']}/review"
+
+    # Простому пользователю заключение недоступно
+    assert client.put(url, headers=grower, json={"disease": "esca"}).status_code == 403
+    # Чужую проверку агроном не видит
+    assert (
+        client.put(url, headers=agronomist, json={"disease": "esca"}).status_code == 404
+    )
+    assert client.delete(url, headers=agronomist).status_code == 404
+    mine = diagnose(client, agronomist, save="true")
+    bad = client.put(
+        f"/api/v1/diagnoses/{mine['id']}/review",
+        headers=agronomist,
+        json={"disease": "Не болезнь"},
+    )
+    assert bad.status_code == 422

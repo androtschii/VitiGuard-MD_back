@@ -1,9 +1,9 @@
 import uuid
 from datetime import date
 
-from pydantic import Field
+from pydantic import AwareDatetime, Field
 
-from app.schemas.base import EntityResponse, ResponseSchema
+from app.schemas.base import EntityResponse, RequestSchema, ResponseSchema
 from app.schemas.pagination import PageParams
 
 
@@ -53,6 +53,22 @@ class DiagnosisRead(ResponseSchema):
     id: uuid.UUID | None = None
 
 
+class ReviewRead(ResponseSchema):
+    """Заключение агронома по проверке."""
+
+    disease: str
+    comment: str | None
+    reviewed_at: AwareDatetime
+    # Имя эксперта; None — его учётная запись удалена
+    reviewer: str | None
+
+
+class ReviewUpdate(RequestSchema):
+    # Класс — как у модели: строчные латинские буквы и подчёркивание
+    disease: str = Field(pattern=r"^[a-z_]{1,50}$", examples=["downy_mildew"])
+    comment: str | None = Field(default=None, max_length=1000)
+
+
 class DiagnosisRecordRead(EntityResponse):
     """Проверка из истории (pr-053): фото, диагноз и участок, если указан."""
 
@@ -64,6 +80,8 @@ class DiagnosisRecordRead(EntityResponse):
     confidence: float = Field(ge=0, le=1)
     # Вероятности классов по убыванию
     top: list[DiseaseProbability]
+    # None — агроном ещё не смотрел
+    review: ReviewRead | None
 
 
 class DiagnosisQuery(PageParams):

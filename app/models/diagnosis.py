@@ -1,7 +1,8 @@
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, String
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -57,6 +58,11 @@ class DiseaseResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             " OR (predicted_class IS NOT NULL AND confidence IS NOT NULL)",
             name="completed_has_prediction",
         ),
+        # Заключение эксперта — диагноз и время вместе или ни того ни другого
+        CheckConstraint(
+            "(expert_class IS NULL) = (reviewed_at IS NULL)",
+            name="review_complete",
+        ),
     )
 
     image_id: Mapped[uuid.UUID] = mapped_column(
@@ -74,5 +80,15 @@ class DiseaseResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Top-K вероятностей: {"downy_mildew": 0.91, "healthy": 0.06, ...}
     probabilities: Mapped[dict[str, float] | None] = mapped_column(JSONB)
     error: Mapped[str | None] = mapped_column(String(1000))
+    # Заключение агронома (pr-052): подтверждённый или исправленный диагноз.
+    # Совпадает с predicted_class — модель права; нет — ошиблась. Для журнала
+    # дообучения это разметка фото
+    expert_class: Mapped[str | None] = mapped_column(String(50))
+    expert_comment: Mapped[str | None] = mapped_column(String(1000))
+    reviewed_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL")
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     image: Mapped["LeafImage"] = relationship(back_populates="results")
+    reviewer: Mapped["User | None"] = relationship()

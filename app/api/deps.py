@@ -9,6 +9,7 @@ from app.core.config import Settings
 from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.tokens import TokenType, decode_token
 from app.integrations.copernicus import CopernicusClient
+from app.integrations.object_storage import ObjectStorage, Storage
 from app.integrations.open_meteo import OpenMeteoClient
 from app.models.user import User, UserRole
 from app.repositories.user import UserRepository
@@ -37,6 +38,18 @@ async def get_session(request: Request) -> AsyncIterator[AsyncSession]:
 
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+
+def get_storage(request: Request, settings: SettingsDep) -> Storage:
+    """Хранилище фото создаётся при первом запросе; тесты подставляют своё."""
+    storage: Storage | None = getattr(request.app.state, "storage", None)
+    if storage is None:
+        storage = ObjectStorage.from_settings(settings)
+        request.app.state.storage = storage
+    return storage
+
+
+StorageDep = Annotated[Storage, Depends(get_storage)]
 
 # Параметры страницы берутся из строки запроса: ?page=2&size=20
 PageParamsDep = Annotated[PageParams, Query()]

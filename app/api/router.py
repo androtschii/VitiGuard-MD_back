@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.routes import (
     ai,
     auth,
+    diagnoses,
     info,
     osm,
     regions,
@@ -25,3 +26,4 @@ api_router.include_router(risks.router)
 api_router.include_router(risks.today_router)
 api_router.include_router(weather.router)
 api_router.include_router(ai.router)
+api_router.include_router(diagnoses.router)

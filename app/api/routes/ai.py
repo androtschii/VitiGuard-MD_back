@@ -1,17 +1,20 @@
+import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, File, Query, Request, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
-from app.api.deps import CurrentUserDep, SettingsDep
+from app.api.deps import CurrentUserDep, SessionDep, SettingsDep, StorageDep
 from app.core.errors import PayloadTooLargeError, ServiceUnavailableError
 from app.ml.classifier import LeafClassifier
 from app.ml.model_file import ModelFile, describe_model
 from app.ml.segmentation import LesionSegmenter
+from app.repositories.vineyard import VineyardRepository
 from app.schemas.diagnosis import ClassifierModelRead, DiagnosisRead
 from app.schemas.errors import ErrorResponse
 from app.services.diagnosis import analyze_leaf, read_leaf_image
+from app.services.diagnosis_history import save_diagnosis
 
 router = APIRouter(
     prefix="/ai",
@@ -95,6 +98,7 @@ async def classifier_model_file(
     summary="Определение болезни по фото листа",
     responses={
         status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse},
+        status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
         status.HTTP_413_CONTENT_TOO_LARGE: {"model": ErrorResponse},
         status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: {"model": ErrorResponse},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
@@ -106,8 +110,16 @@ async def diagnose(
     ],
     request: Request,
     settings: SettingsDep,
-    _: CurrentUserDep,
+    user: CurrentUserDep,
+    session: SessionDep,
+    storage: StorageDep,
     top_k: Annotated[int, Query(ge=1, le=6, description="Сколько классов вернуть")] = 3,
+    save: Annotated[
+        bool, Query(description="Сохранить фото и результат в историю проверок")
+    ] = False,
+    vineyard_id: Annotated[
+        uuid.UUID | None, Query(description="Участок, на котором снято фото")
+    ] = None,
 ) -> DiagnosisRead:
     data = await image.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
@@ -115,6 +127,24 @@ async def diagnose(
     leaf = read_leaf_image(data)
     classifier = get_classifier(request, settings)
     segmenter = get_segmenter(request, settings)
+    if save and vineyard_id is not None:
+        # Только свой участок: чужой — как несуществующий
+        await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
     # Модели занимают процессор на десятки и сотни миллисекунд: в отдельном
     # потоке они не задерживают обработку других запросов
-    return await run_in_threadpool(analyze_leaf, leaf, classifier, segmenter, top_k)
+    diagnosis = await run_in_threadpool(
+        analyze_leaf, leaf, classifier, segmenter, top_k
+    )
+    if save:
+        model = await run_in_threadpool(classifier_file, settings)
+        diagnosis.id = await save_diagnosis(
+            session,
+            storage,
+            user.id,
+            vineyard_id,
+            data,
+            leaf,
+            diagnosis,
+            model.version,
+        )
+    return diagnosis

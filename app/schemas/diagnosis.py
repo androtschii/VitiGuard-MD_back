@@ -1,6 +1,10 @@
+import uuid
+from datetime import date
+
 from pydantic import Field
 
-from app.schemas.base import ResponseSchema
+from app.schemas.base import EntityResponse, ResponseSchema
+from app.schemas.pagination import PageParams
 
 
 class DiseaseProbability(ResponseSchema):
@@ -45,3 +49,28 @@ class DiagnosisRead(ResponseSchema):
     heatmap: str | None
     # None — модель сегментации не загружена на сервер
     lesion: LesionRead | None
+    # Запись в истории проверок (save=true); None — фото не сохранялось
+    id: uuid.UUID | None = None
+
+
+class DiagnosisRecordRead(EntityResponse):
+    """Проверка из истории (pr-053): фото, диагноз и участок, если указан."""
+
+    vineyard_id: uuid.UUID | None
+    vineyard_name: str | None
+    model: str
+    model_version: str
+    disease: str
+    confidence: float = Field(ge=0, le=1)
+    # Вероятности классов по убыванию
+    top: list[DiseaseProbability]
+
+
+class DiagnosisQuery(PageParams):
+    """Страница истории и фильтры: ?disease=esca&date_from=2026-06-01&page=2."""
+
+    disease: str | None = Field(default=None, max_length=50)
+    vineyard_id: uuid.UUID | None = None
+    # Границы включительно, по календарным дням UTC
+    date_from: date | None = None
+    date_to: date | None = None

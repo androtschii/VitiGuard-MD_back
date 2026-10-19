@@ -90,6 +90,13 @@ class Settings(BaseSettings):
     diagnosis_model_path: Path = Path("models/diagnosis.onnx")
     # Сегментация поражения (U-Net, ml/pr-013); без неё диагноз ставится без маски
     lesion_model_path: Path = Path("models/lesion.onnx")
+    # S3-совместимое хранилище фото листов (pr-039): RustFS в Docker Compose.
+    # Ключи по умолчанию — только для локальной разработки
+    s3_endpoint: str = "127.0.0.1:9000"
+    s3_access_key: str = "vitiguard"
+    s3_secret_key: SecretStr = SecretStr("vitiguard-secret")
+    s3_bucket: str = "leaf-images"
+    s3_secure: bool = False
 
     @model_validator(mode="after")
     def check_secret_key(self) -> Self:

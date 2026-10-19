@@ -139,3 +139,34 @@ def test_without_model_gives_503(
         "status": 503,
         "detail": "Модель диагностики не загружена на сервер",
     }
+
+
+def test_classifier_model_for_offline_use(
+    client: TestClient, headers: dict[str, str]
+) -> None:
+    meta = client.get("/api/v1/ai/models/classifier", headers=headers)
+
+    assert meta.status_code == 200
+    body = meta.json()
+    assert body["name"] == "tiny"
+    assert body["image_size"] > 0
+    assert body["mean"] == [0.485, 0.456, 0.406]
+    assert body["std"] == [0.229, 0.224, 0.225]
+    assert len(body["version"]) == 16
+
+    file = client.get("/api/v1/ai/models/classifier/file", headers=headers)
+
+    assert file.status_code == 200
+    assert file.headers["content-type"] == "application/octet-stream"
+    assert file.headers["etag"] == f'"{body["version"]}"'
+    assert len(file.content) == body["size_bytes"]
+    assert client.get("/api/v1/ai/models/classifier").status_code == 401
+
+
+def test_classifier_model_missing(
+    client: TestClient, headers: dict[str, str], tmp_path: Path
+) -> None:
+    use_models(client, tmp_path / "absent.onnx", tmp_path / "no.onnx")
+
+    for url in ("/api/v1/ai/models/classifier", "/api/v1/ai/models/classifier/file"):
+        assert client.get(url, headers=headers).status_code == 503

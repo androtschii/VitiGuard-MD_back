@@ -2,12 +2,14 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, Query, Request, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse
 
 from app.api.deps import CurrentUserDep, SettingsDep
 from app.core.errors import PayloadTooLargeError, ServiceUnavailableError
 from app.ml.classifier import LeafClassifier
+from app.ml.model_file import ModelFile, describe_model
 from app.ml.segmentation import LesionSegmenter
-from app.schemas.diagnosis import DiagnosisRead
+from app.schemas.diagnosis import ClassifierModelRead, DiagnosisRead
 from app.schemas.errors import ErrorResponse
 from app.services.diagnosis import analyze_leaf, read_leaf_image
 
@@ -38,6 +40,54 @@ def get_segmenter(request: Request, settings: SettingsDep) -> LesionSegmenter | 
         segmenter = LesionSegmenter(settings.lesion_model_path)
         request.app.state.segmenter = segmenter
     return segmenter
+
+
+def classifier_file(settings: SettingsDep) -> ModelFile:
+    path = settings.diagnosis_model_path
+    if not path.exists():
+        raise ServiceUnavailableError("Модель диагностики не загружена на сервер")
+    return describe_model(path)
+
+
+MODEL_RESPONSES: dict[int | str, dict[str, object]] = {
+    status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse}
+}
+
+
+# Браузер скачивает классификатор один раз и ставит диагноз без сети
+# (frontend/pr-071). Версия — начало SHA-256: по ней клиент понимает, что
+# сохранённая копия устарела
+@router.get(
+    "/models/classifier",
+    summary="Описание классификатора для работы без сети",
+    responses=MODEL_RESPONSES,
+)
+async def classifier_model(
+    settings: SettingsDep, _: CurrentUserDep
+) -> ClassifierModelRead:
+    model = await run_in_threadpool(classifier_file, settings)
+    return ClassifierModelRead(**model.__dict__)
+
+
+@router.get(
+    "/models/classifier/file",
+    summary="Файл классификатора (ONNX)",
+    response_class=FileResponse,
+    responses=MODEL_RESPONSES,
+)
+async def classifier_model_file(
+    settings: SettingsDep, _: CurrentUserDep
+) -> FileResponse:
+    model = await run_in_threadpool(classifier_file, settings)
+    return FileResponse(
+        settings.diagnosis_model_path,
+        media_type="application/octet-stream",
+        filename=f"{model.name}-{model.version}.onnx",
+        headers={
+            "ETag": f'"{model.version}"',
+            "Cache-Control": "private, max-age=86400",
+        },
+    )
 
 
 @router.post(

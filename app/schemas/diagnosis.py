@@ -17,6 +17,20 @@ class LesionRead(ResponseSchema):
     severity: float = Field(ge=0, le=1)
 
 
+class ClassifierModelRead(ResponseSchema):
+    """Классификатор для диагностики в браузере без сети (frontend/pr-071)."""
+
+    name: str = Field(examples=["efficientnet_b0"])
+    # Порядок классов — порядок выходов модели
+    classes: list[str]
+    image_size: int = Field(examples=[224])
+    # Нормализация входа по каналам RGB, как при обучении
+    mean: list[float]
+    std: list[float]
+    version: str = Field(examples=["3f1c9a0b7d2e4f60"])
+    size_bytes: int
+
+
 class DiagnosisRead(ResponseSchema):
     """Результат классификации фото листа."""
 

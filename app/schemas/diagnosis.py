@@ -1,5 +1,6 @@
 import uuid
 from datetime import date
+from typing import Literal
 
 from pydantic import AwareDatetime, Field
 
@@ -51,6 +52,18 @@ class DiagnosisRead(ResponseSchema):
     lesion: LesionRead | None
     # Запись в истории проверок (save=true); None — фото не сохранялось
     id: uuid.UUID | None = None
+
+
+class DiagnosisJobStarted(ResponseSchema):
+    task_id: str
+
+
+class DiagnosisJobRead(ResponseSchema):
+    """Диагностика в фоне: pending — в очереди, running — идёт, done — готово,
+    failed — не удалось."""
+
+    status: Literal["pending", "running", "done", "failed"]
+    result: DiagnosisRead | None = None
 
 
 class ReviewRead(ResponseSchema):

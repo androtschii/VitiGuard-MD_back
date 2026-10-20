@@ -58,6 +58,7 @@ def to_record(result: DiseaseResult) -> DiagnosisRecordRead:
         disease=result.predicted_class or "",
         confidence=result.confidence or 0,
         top=[DiseaseProbability(disease=d, probability=p) for d, p in probabilities],
+        severity=result.severity,
         review=review,
     )
 

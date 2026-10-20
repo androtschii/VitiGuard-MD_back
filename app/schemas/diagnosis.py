@@ -80,6 +80,7 @@ class DiagnosisRecordRead(EntityResponse):
     confidence: float = Field(ge=0, le=1)
     # Вероятности классов по убыванию
     top: list[DiseaseProbability]
+    severity: float | None = Field(ge=0, le=1)
     # None — агроном ещё не смотрел
     review: ReviewRead | None
 

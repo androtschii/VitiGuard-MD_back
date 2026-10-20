@@ -5,13 +5,14 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from diagnosis_model import build_model, photo
+from diagnosis_model import build_model, build_segmenter, photo
 from fastapi.testclient import TestClient
 from memory_storage import MemoryStorage
 from PIL import Image
 
 from app.core.config import Settings
-from app.schemas.diagnosis import DiagnosisRead, DiseaseProbability
+from app.models.diagnosis import DiseaseResult
+from app.schemas.diagnosis import DiagnosisRead, DiseaseProbability, LesionRead
 from app.services.diagnosis_history import save_diagnosis, storage_key
 
 RunSql = Callable[[str], list[tuple[object, ...]]]
@@ -97,11 +98,28 @@ def test_saved_diagnosis_in_history(client: TestClient, storage: MemoryStorage) 
     assert record["model"] == "tiny"
     assert len(record["model_version"]) == 16
     assert record["top"][0]["disease"] == "healthy"
+    assert record["severity"] is None
 
     image = client.get(f"/api/v1/diagnoses/{saved['id']}/image", headers=headers)
     assert image.status_code == 200
     assert image.headers["content-type"] == "image/jpeg"
     assert Image.open(io.BytesIO(image.content)).size == (100, 80)
+
+
+@pytest.mark.integration
+def test_history_keeps_severity(client: TestClient, tmp_path: Path) -> None:
+    app: Any = client.app
+    settings: Settings = app.state.settings
+    app.state.settings = settings.model_copy(
+        update={"lesion_model_path": build_segmenter(tmp_path / "unet.onnx")}
+    )
+    headers = login(client)
+
+    saved = diagnose(client, headers, save="true")
+
+    record = client.get("/api/v1/diagnoses", headers=headers).json()["items"][0]
+    assert record["severity"] == pytest.approx(saved["lesion"]["severity"])
+    assert record["severity"] == pytest.approx(1)
 
 
 @pytest.mark.integration
@@ -170,32 +188,67 @@ def test_storage_key_follows_image_format() -> None:
     assert storage_key(owner, image, Image.new("RGB", (2, 2))).endswith(".jpg")
 
 
-class FailingSession:
-    """Сессия, у которой не прошёл commit: фото не должно остаться в хранилище."""
+class RecordingSession:
+    """Сессия без базы: запоминает добавленные объекты."""
+
+    def __init__(self) -> None:
+        self.added: list[Any] = []
 
     def add(self, instance: Any) -> None:
         if getattr(instance, "id", None) is None:
             instance.id = uuid.uuid4()
+        self.added.append(instance)
 
     async def flush(self) -> None:
         return None
 
     async def commit(self) -> None:
+        return None
+
+
+class FailingSession(RecordingSession):
+    """Сессия, у которой не прошёл commit: фото не должно остаться в хранилище."""
+
+    async def commit(self) -> None:
         raise RuntimeError("database is down")
 
 
-async def test_failed_commit_removes_photo() -> None:
-    storage = MemoryStorage()
-    leaf = Image.new("RGB", (4, 4))
-    diagnosis = DiagnosisRead(
+def tiny_diagnosis(lesion: LesionRead | None = None) -> DiagnosisRead:
+    return DiagnosisRead(
         model="tiny",
         disease="healthy",
         confidence=1,
         low_confidence=False,
         top=[DiseaseProbability(disease="healthy", probability=1)],
         heatmap=None,
-        lesion=None,
+        lesion=lesion,
     )
+
+
+@pytest.mark.parametrize("severity", [0.27, None])
+async def test_severity_saved_with_result(severity: float | None) -> None:
+    session = RecordingSession()
+    lesion = None if severity is None else LesionRead(mask="", severity=severity)
+
+    await save_diagnosis(
+        session,  # type: ignore[arg-type]
+        MemoryStorage(),
+        uuid.uuid4(),
+        None,
+        b"jpeg",
+        Image.new("RGB", (4, 4)),
+        tiny_diagnosis(lesion),
+        "v1",
+    )
+
+    [result] = [item for item in session.added if isinstance(item, DiseaseResult)]
+    assert result.severity == severity
+
+
+async def test_failed_commit_removes_photo() -> None:
+    storage = MemoryStorage()
+    leaf = Image.new("RGB", (4, 4))
+    diagnosis = tiny_diagnosis()
 
     with pytest.raises(RuntimeError):
         await save_diagnosis(

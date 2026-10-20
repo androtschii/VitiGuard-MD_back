@@ -53,6 +53,7 @@ class DiseaseResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "disease_results"
     __table_args__ = (
         CheckConstraint("confidence BETWEEN 0 AND 1", name="confidence_range"),
+        CheckConstraint("severity BETWEEN 0 AND 1", name="severity_range"),
         CheckConstraint(
             "status <> 'completed'"
             " OR (predicted_class IS NOT NULL AND confidence IS NOT NULL)",
@@ -79,6 +80,7 @@ class DiseaseResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     confidence: Mapped[float | None]
     # Top-K вероятностей: {"downy_mildew": 0.91, "healthy": 0.06, ...}
     probabilities: Mapped[dict[str, float] | None] = mapped_column(JSONB)
+    severity: Mapped[float | None]
     error: Mapped[str | None] = mapped_column(String(1000))
     # Заключение агронома (pr-052): подтверждённый или исправленный диагноз.
     # Совпадает с predicted_class — модель права; нет — ошиблась. Для журнала

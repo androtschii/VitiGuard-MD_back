@@ -9,6 +9,7 @@ from app.api.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.db.session import create_engine, create_session_factory
+from app.integrations.cache import RedisCache
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -27,7 +28,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             transport=httpx.AsyncHTTPTransport(retries=2),
             headers={"User-Agent": f"vitiguard-md/{__version__}"},
         )
+        cache = RedisCache.from_settings(settings)
+        application.state.cache = cache
         yield
+        await cache.close()
         await application.state.http_client.aclose()
         # Закрывает все соединения пула, чтобы база не держала «зависшие» сессии
         await engine.dispose()

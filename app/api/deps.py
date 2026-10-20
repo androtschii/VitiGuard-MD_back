@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.tokens import TokenType, decode_token
+from app.integrations.cache import Cache
 from app.integrations.copernicus import CopernicusClient
 from app.integrations.object_storage import ObjectStorage, Storage
 from app.integrations.open_meteo import OpenMeteoClient
@@ -50,6 +51,14 @@ def get_storage(request: Request, settings: SettingsDep) -> Storage:
 
 
 StorageDep = Annotated[Storage, Depends(get_storage)]
+
+
+def get_cache(request: Request) -> Cache:
+    cache: Cache = request.app.state.cache
+    return cache
+
+
+CacheDep = Annotated[Cache, Depends(get_cache)]
 
 # Параметры страницы берутся из строки запроса: ?page=2&size=20
 PageParamsDep = Annotated[PageParams, Query()]

@@ -5,6 +5,7 @@ x-app-environment: &app-environment
   VITIGUARD_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-vitiguard}:${POSTGRES_PASSWORD:-vitiguard}@db:5432/${POSTGRES_DB:-vitiguard}
   VITIGUARD_CELERY_BROKER_URL: redis://redis:6379/0
   VITIGUARD_CELERY_RESULT_BACKEND: redis://redis:6379/1
+  VITIGUARD_CACHE_URL: redis://redis:6379/2
   VITIGUARD_SMTP_HOST: mailpit
   VITIGUARD_SMTP_PORT: 1025
   VITIGUARD_S3_ENDPOINT: storage:9000

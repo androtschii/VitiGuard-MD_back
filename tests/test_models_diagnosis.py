@@ -77,6 +77,10 @@ async def test_completed_result_keeps_probabilities(session: AsyncSession) -> No
             {"status": ProcessingStatus.FAILED, "confidence": 1.5},
             "ck_disease_results_confidence_range",
         ),
+        (
+            {"status": ProcessingStatus.FAILED, "severity": 1.5},
+            "ck_disease_results_severity_range",
+        ),
     ],
 )
 async def test_result_constraints(

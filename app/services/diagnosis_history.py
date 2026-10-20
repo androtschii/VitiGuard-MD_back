@@ -53,6 +53,7 @@ async def save_diagnosis(
         predicted_class=diagnosis.disease,
         confidence=diagnosis.confidence,
         probabilities={item.disease: item.probability for item in diagnosis.top},
+        severity=diagnosis.lesion.severity if diagnosis.lesion else None,
     )
     session.add(result)
     await run_in_threadpool(storage.put, key, data, image.content_type)

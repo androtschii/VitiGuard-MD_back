@@ -23,7 +23,7 @@ from app.schemas.diagnosis import (
     DiagnosisRead,
 )
 from app.schemas.errors import ErrorResponse
-from app.services.diagnosis import analyze_leaf, read_leaf_image
+from app.services.diagnosis import analyze_leaf, photo_location, read_leaf_image
 from app.services.diagnosis_history import EXTENSIONS, save_diagnosis
 from app.tasks.diagnosis import DIAGNOSE
 from app.worker.celery_app import celery_app
@@ -147,6 +147,7 @@ async def diagnose(
     diagnosis = await run_in_threadpool(
         analyze_leaf, leaf, classifier, segmenter, top_k
     )
+    diagnosis.location = photo_location(data)
     if save:
         model = await run_in_threadpool(classifier_file, settings)
         diagnosis.id = await save_diagnosis(

@@ -24,6 +24,13 @@ class LesionRead(ResponseSchema):
     severity: float = Field(ge=0, le=1)
 
 
+class LocationRead(ResponseSchema):
+    """Где снято фото: координаты из EXIF, WGS 84."""
+
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+
+
 class ClassifierModelRead(ResponseSchema):
     """Классификатор для диагностики в браузере без сети (frontend/pr-071)."""
 
@@ -54,6 +61,8 @@ class DiagnosisRead(ResponseSchema):
     lesion: LesionRead | None
     # Запись в истории проверок (save=true); None — фото не сохранялось
     id: uuid.UUID | None = None
+    # Координаты съёмки из EXIF; None — в файле их нет
+    location: LocationRead | None = None
 
 
 class DiagnosisJobStarted(ResponseSchema):
@@ -98,6 +107,7 @@ class DiagnosisRecordRead(EntityResponse):
     severity: float | None = Field(ge=0, le=1)
     # Сохранённые наложения: GET /diagnoses/{id}/overlays/{heatmap|lesion}
     overlays: list[Overlay]
+    location: LocationRead | None
     # None — агроном ещё не смотрел
     review: ReviewRead | None
 

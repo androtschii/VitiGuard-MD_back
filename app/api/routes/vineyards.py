@@ -12,6 +12,7 @@ from app.schemas.errors import ErrorResponse
 from app.schemas.pagination import Page
 from app.schemas.vegetation import (
     IndexValueRead,
+    NdviAnomalyRead,
     NdviMapRead,
     VegetationObservationRead,
     VegetationRefreshStarted,
@@ -25,6 +26,7 @@ from app.schemas.vineyard import (
     VineyardRead,
     VineyardUpdate,
 )
+from app.services.anomaly import vineyard_anomalies
 from app.services.boundary_export import ExportFormat, to_geojson, to_shapefile_zip
 from app.services.boundary_files import parse_boundaries
 from app.services.osm import vineyard_context
@@ -368,6 +370,21 @@ async def read_vegetation(
             )
         )
     return observations
+
+
+@router.get(
+    "/{vineyard_id}/vegetation/anomalies",
+    summary="Снимки с аномальной просадкой NDVI",
+    responses={status.HTTP_404_NOT_FOUND: {"model": ErrorResponse}},
+)
+async def read_ndvi_anomalies(
+    vineyard_id: uuid.UUID, user: CurrentUserDep, session: SessionDep
+) -> list[NdviAnomalyRead]:
+    view = await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
+    return [
+        NdviAnomalyRead.model_validate(anomaly, from_attributes=True)
+        for anomaly in await vineyard_anomalies(session, view.vineyard)
+    ]
 
 
 @router.get(

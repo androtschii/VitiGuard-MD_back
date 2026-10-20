@@ -1,20 +1,32 @@
 import uuid
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
+from celery.result import AsyncResult
 from fastapi import APIRouter, File, Query, Request, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
 from app.api.deps import CurrentUserDep, SessionDep, SettingsDep, StorageDep
-from app.core.errors import PayloadTooLargeError, ServiceUnavailableError
+from app.core.errors import (
+    NotFoundError,
+    PayloadTooLargeError,
+    ServiceUnavailableError,
+)
 from app.ml.classifier import LeafClassifier
 from app.ml.model_file import ModelFile, describe_model
 from app.ml.segmentation import LesionSegmenter
 from app.repositories.vineyard import VineyardRepository
-from app.schemas.diagnosis import ClassifierModelRead, DiagnosisRead
+from app.schemas.diagnosis import (
+    ClassifierModelRead,
+    DiagnosisJobRead,
+    DiagnosisJobStarted,
+    DiagnosisRead,
+)
 from app.schemas.errors import ErrorResponse
 from app.services.diagnosis import analyze_leaf, read_leaf_image
-from app.services.diagnosis_history import save_diagnosis
+from app.services.diagnosis_history import EXTENSIONS, save_diagnosis
+from app.tasks.diagnosis import DIAGNOSE
+from app.worker.celery_app import celery_app
 
 router = APIRouter(
     prefix="/ai",
@@ -148,3 +160,91 @@ async def diagnose(
             model.version,
         )
     return diagnosis
+
+
+def job_state(task_id: str) -> tuple[str, Any]:
+    """Состояние задачи и её результат из Redis (синхронный вызов)."""
+    result: AsyncResult[Any] = AsyncResult(task_id, app=celery_app)
+    return result.state, result.result if result.state == "SUCCESS" else None
+
+
+JobStatus = Literal["pending", "running", "done", "failed"]
+JOB_STATUSES: dict[str, JobStatus] = {"PENDING": "pending", "FAILURE": "failed"}
+
+
+# Снимок с телефона в 10 МБ анализируется секунды: запрос не держит соединение,
+# а ставит задачу воркеру, и клиент спрашивает о результате
+@router.post(
+    "/diagnose/jobs",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Диагностика фото листа в фоне",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse},
+        status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
+        status.HTTP_413_CONTENT_TOO_LARGE: {"model": ErrorResponse},
+        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: {"model": ErrorResponse},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+    },
+)
+async def start_diagnosis(
+    image: Annotated[
+        UploadFile, File(description="Фото листа: JPEG, PNG или WebP до 10 МБ")
+    ],
+    settings: SettingsDep,
+    user: CurrentUserDep,
+    session: SessionDep,
+    storage: StorageDep,
+    top_k: Annotated[int, Query(ge=1, le=6, description="Сколько классов вернуть")] = 3,
+    save: Annotated[
+        bool, Query(description="Сохранить фото и результат в историю проверок")
+    ] = False,
+    vineyard_id: Annotated[
+        uuid.UUID | None, Query(description="Участок, на котором снято фото")
+    ] = None,
+) -> DiagnosisJobStarted:
+    data = await image.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise PayloadTooLargeError("Файл больше 10 МБ")
+    leaf = read_leaf_image(data)
+    await run_in_threadpool(classifier_file, settings)
+    if save and vineyard_id is not None:
+        await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
+    task_id = str(uuid.uuid4())
+    key = f"jobs/{user.id}/{task_id}.{EXTENSIONS.get(leaf.format or '', 'jpg')}"
+    await run_in_threadpool(storage.put, key, data, "application/octet-stream")
+    try:
+        celery_app.send_task(
+            DIAGNOSE,
+            args=[
+                str(user.id),
+                key,
+                top_k,
+                save,
+                str(vineyard_id) if save and vineyard_id else None,
+            ],
+            task_id=task_id,
+        )
+    except Exception:
+        await run_in_threadpool(storage.delete, key)
+        raise
+    return DiagnosisJobStarted(task_id=task_id)
+
+
+@router.get(
+    "/diagnose/jobs/{task_id}",
+    summary="Результат диагностики в фоне",
+    responses={status.HTTP_404_NOT_FOUND: {"model": ErrorResponse}},
+)
+async def read_diagnosis_job(
+    task_id: uuid.UUID, user: CurrentUserDep
+) -> DiagnosisJobRead:
+    state, result = await run_in_threadpool(job_state, str(task_id))
+    if state != "SUCCESS":
+        return DiagnosisJobRead(status=JOB_STATUSES.get(state, "running"))
+    # Номер задачи знает только тот, кто её поставил, но результат всё равно
+    # отдаётся только ему
+    if result.get("owner_id") != str(user.id):
+        raise NotFoundError("Задача не найдена")
+    return DiagnosisJobRead(
+        status="done", result=DiagnosisRead.model_validate(result["diagnosis"])
+    )

@@ -35,9 +35,22 @@ def client(settings: Settings) -> Iterator[TestClient]:
         yield test_client
 
 
+def external_url(name: str, required_part: str = "") -> str | None:
+    """Уже запущенный сервер вместо контейнера — там, где Docker нет."""
+    url = os.getenv(name)
+    if url and required_part not in url.rsplit("/", 1)[-1]:
+        # Тесты очищают таблицы: рабочую базу так не задеть
+        raise pytest.UsageError(f"{name}: имя базы должно содержать «{required_part}»")
+    return url
+
+
 @pytest.fixture(scope="session")
 def database_url() -> Iterator[str]:
     """PostgreSQL с PostGIS в Docker на всю тестовую сессию."""
+    url = external_url("VITIGUARD_TEST_DATABASE_URL", "test")
+    if url:
+        yield url
+        return
     try:
         container = (
             PostgresContainer(POSTGIS_IMAGE, driver="asyncpg")
@@ -60,6 +73,10 @@ def database_url() -> Iterator[str]:
 @pytest.fixture(scope="session")
 def redis_url() -> Iterator[str]:
     """Redis в Docker на всю тестовую сессию (без номера базы в конце)."""
+    url = external_url("VITIGUARD_TEST_REDIS_URL")
+    if url:
+        yield url
+        return
     try:
         container = RedisContainer(REDIS_IMAGE).start()
     except DockerException:

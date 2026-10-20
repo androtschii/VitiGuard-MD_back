@@ -57,6 +57,14 @@ uv run pytest
 uv run pytest --cov   # с отчётом о покрытии, минимум 85 %
 ```
 
+Без Docker интеграционные тесты можно запустить на уже работающих PostgreSQL с PostGIS и Redis. Имя базы должно содержать `test`: тесты очищают таблицы.
+
+```bash
+VITIGUARD_TEST_DATABASE_URL=postgresql+asyncpg://vitiguard:vitiguard@127.0.0.1:5432/vitiguard_test \
+VITIGUARD_TEST_REDIS_URL=redis://127.0.0.1:6379 \
+uv run pytest
+```
+
 ## Проверка кода
 
 ```bash

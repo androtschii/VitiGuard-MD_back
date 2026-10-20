@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 from onnx import TensorProto, helper, numpy_helper
-from PIL import Image
+from PIL import ExifTags, Image
 
 CLASSES = [
     "healthy",
@@ -91,6 +91,20 @@ def photo(
 ) -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", size, color).save(buffer, image_format)
+    return buffer.getvalue()
+
+
+def gps_photo(
+    lat: tuple[float, float, float],
+    lon: tuple[float, float, float],
+    refs: tuple[str, str] = ("N", "E"),
+    color: tuple[int, int, int] = (255, 0, 0),
+) -> bytes:
+    """JPEG с координатами съёмки в EXIF: градусы, минуты, секунды."""
+    exif = Image.Exif()
+    exif[ExifTags.IFD.GPSInfo] = {1: refs[0], 2: lat, 3: refs[1], 4: lon}
+    buffer = io.BytesIO()
+    Image.new("RGB", (100, 80), color).save(buffer, "JPEG", exif=exif)
     return buffer.getvalue()
 
 

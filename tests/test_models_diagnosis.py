@@ -98,6 +98,8 @@ async def test_result_constraints(
     [
         ({"size_bytes": 0}, "ck_leaf_images_size_positive"),
         ({"width": 0}, "ck_leaf_images_dimensions_positive"),
+        ({"latitude": 47.14}, "ck_leaf_images_location_valid"),
+        ({"latitude": 91, "longitude": 28.86}, "ck_leaf_images_location_valid"),
     ],
 )
 async def test_image_constraints(

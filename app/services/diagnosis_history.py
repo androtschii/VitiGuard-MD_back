@@ -51,6 +51,8 @@ async def save_diagnosis(
         size_bytes=len(data),
         width=leaf.width,
         height=leaf.height,
+        latitude=diagnosis.location.lat if diagnosis.location else None,
+        longitude=diagnosis.location.lon if diagnosis.location else None,
     )
     session.add(image)
     await session.flush()

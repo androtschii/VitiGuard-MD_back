@@ -12,7 +12,7 @@ from app.integrations.object_storage import ObjectStorage, Storage
 from app.ml.classifier import LeafClassifier
 from app.ml.model_file import describe_model
 from app.ml.segmentation import LesionSegmenter
-from app.services.diagnosis import analyze_leaf, read_leaf_image
+from app.services.diagnosis import analyze_leaf, photo_location, read_leaf_image
 from app.services.diagnosis_history import save_diagnosis
 
 DIAGNOSE = "ai.diagnose"
@@ -50,6 +50,7 @@ async def run_diagnosis(
             load_segmenter(settings.lesion_model_path),
             top_k,
         )
+        diagnosis.location = photo_location(data)
         if save:
             version = describe_model(settings.diagnosis_model_path).version
             engine = create_engine(settings)

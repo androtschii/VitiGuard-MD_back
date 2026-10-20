@@ -13,6 +13,7 @@ from app.schemas.diagnosis import (
     DiagnosisQuery,
     DiagnosisRecordRead,
     DiseaseProbability,
+    LocationRead,
     Overlay,
     ReviewRead,
     ReviewUpdate,
@@ -34,7 +35,8 @@ NOT_FOUND: dict[int | str, dict[str, Any]] = {
 
 
 def to_record(result: DiseaseResult) -> DiagnosisRecordRead:
-    vineyard = result.image.vineyard
+    image = result.image
+    vineyard = image.vineyard
     probabilities = sorted(
         (result.probabilities or {}).items(), key=lambda item: item[1], reverse=True
     )
@@ -68,6 +70,11 @@ def to_record(result: DiseaseResult) -> DiagnosisRecordRead:
         top=[DiseaseProbability(disease=d, probability=p) for d, p in probabilities],
         severity=result.severity,
         overlays=overlays,
+        location=(
+            LocationRead(lat=image.latitude, lon=image.longitude)
+            if image.latitude is not None and image.longitude is not None
+            else None
+        ),
         review=review,
     )
 

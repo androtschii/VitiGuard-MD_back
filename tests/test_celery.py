@@ -53,8 +53,9 @@ def celery_with_worker(redis_url: str) -> Iterator[Celery]:
     app = create_celery(
         Settings(
             _env_file=None,
-            celery_broker_url=f"{redis_url}/0",  # type: ignore[arg-type]
-            celery_result_backend=f"{redis_url}/1",  # type: ignore[arg-type]
+            # Свои базы Redis: задачу не заберёт воркер, работающий рядом
+            celery_broker_url=f"{redis_url}/14",  # type: ignore[arg-type]
+            celery_result_backend=f"{redis_url}/15",  # type: ignore[arg-type]
         )
     )
     # solo — воркер в одном процессе: работает и в Windows, и внутри теста

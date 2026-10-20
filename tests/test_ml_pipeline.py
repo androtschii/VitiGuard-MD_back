@@ -119,8 +119,9 @@ def worker(
         _env_file=None,
         environment="test",
         database_url=migrated_database_url,  # type: ignore[arg-type]
-        celery_broker_url=f"{redis_url}/0",  # type: ignore[arg-type]
-        celery_result_backend=f"{redis_url}/1",  # type: ignore[arg-type]
+        # Свои базы Redis: задачу не заберёт воркер, работающий рядом
+        celery_broker_url=f"{redis_url}/14",  # type: ignore[arg-type]
+        celery_result_backend=f"{redis_url}/15",  # type: ignore[arg-type]
         diagnosis_model_path=models["diagnosis_model_path"],
         lesion_model_path=models["lesion_model_path"],
     )

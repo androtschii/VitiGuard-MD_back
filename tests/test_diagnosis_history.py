@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from diagnosis_model import build_model, build_segmenter, photo
+from diagnosis_model import build_model, build_segmenter, gps_photo, photo
 from fastapi.testclient import TestClient
 from memory_storage import MemoryStorage
 from PIL import Image
@@ -101,6 +101,7 @@ def test_saved_diagnosis_in_history(client: TestClient, storage: MemoryStorage) 
     assert record["top"][0]["disease"] == "healthy"
     assert record["severity"] is None
     assert record["overlays"] == []
+    assert record["location"] is None
 
     image = client.get(f"/api/v1/diagnoses/{saved['id']}/image", headers=headers)
     assert image.status_code == 200
@@ -138,6 +139,26 @@ def test_history_keeps_severity(
 
     assert client.delete(url, headers=headers).status_code == 204
     assert storage.files == {}
+
+
+@pytest.mark.integration
+def test_history_keeps_photo_location(client: TestClient) -> None:
+    headers = login(client)
+
+    saved = client.post(
+        "/api/v1/ai/diagnose",
+        headers=headers,
+        params={"save": "true"},
+        files={
+            "image": ("leaf.jpg", gps_photo((47, 8, 24), (28, 51, 36)), "image/jpeg")
+        },
+    ).json()
+
+    assert saved["location"] == {"lat": pytest.approx(47.14), "lon": 28.86}
+    record = client.get("/api/v1/diagnoses", headers=headers).json()["items"][0]
+    assert record["location"] == saved["location"]
+    # Участок не подставляется по координатам: его выбирает пользователь
+    assert record["vineyard_id"] is None
 
 
 @pytest.mark.integration

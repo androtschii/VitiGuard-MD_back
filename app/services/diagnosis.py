@@ -2,14 +2,21 @@
 маска поражения."""
 
 import io
+import math
+from typing import Any
 
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import ExifTags, Image, ImageOps, UnidentifiedImageError
 
 from app.core.errors import BadRequestError, UnsupportedMediaError
 from app.ml.classifier import LeafClassifier
 from app.ml.overlays import HEATMAP_SIDE, heatmap, lesion_mask, overlay_size
 from app.ml.segmentation import LesionSegmenter
-from app.schemas.diagnosis import DiagnosisRead, DiseaseProbability, LesionRead
+from app.schemas.diagnosis import (
+    DiagnosisRead,
+    DiseaseProbability,
+    LesionRead,
+    LocationRead,
+)
 
 # Ниже этой вероятности ответ помечается как неуверенный. На полевых снимках
 # модели ошибаются заметно чаще, чем на лабораторных (ml/pr-010), и агроному
@@ -47,6 +54,28 @@ def read_leaf_image(data: bytes) -> Image.Image:
         raise BadRequestError("Файл изображения повреждён") from error
     # Фото с телефона хранят поворот в EXIF: без его учёта лист оказался бы на боку
     return ImageOps.exif_transpose(image)
+
+
+def _degrees(value: Any, ref: Any, negative: str) -> float:
+    degrees, minutes, seconds = (float(part) for part in value)
+    sign = -1 if ref == negative else 1
+    return sign * (degrees + minutes / 60 + seconds / 3600)
+
+
+def photo_location(data: bytes) -> LocationRead | None:
+    """Координаты съёмки из EXIF. Мессенджеры и многие камеры EXIF вырезают, а
+    камера без сигнала пишет нули — тогда координат нет."""
+    try:
+        gps = Image.open(io.BytesIO(data)).getexif().get_ifd(ExifTags.IFD.GPSInfo)
+        lat = _degrees(gps[2], gps[1], "S")
+        lon = _degrees(gps[4], gps[3], "W")
+    except (KeyError, TypeError, ValueError, OSError, UnidentifiedImageError):
+        return None
+    if not (math.isfinite(lat) and math.isfinite(lon)) or (lat == 0 and lon == 0):
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return LocationRead(lat=round(lat, 6), lon=round(lon, 6))
 
 
 def analyze_leaf(

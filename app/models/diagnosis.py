@@ -21,6 +21,11 @@ class LeafImage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint("size_bytes > 0", name="size_positive"),
         CheckConstraint("width > 0 AND height > 0", name="dimensions_positive"),
+        CheckConstraint(
+            "(latitude IS NULL) = (longitude IS NULL)"
+            " AND latitude BETWEEN -90 AND 90 AND longitude BETWEEN -180 AND 180",
+            name="location_valid",
+        ),
     )
 
     owner_id: Mapped[uuid.UUID] = mapped_column(
@@ -35,6 +40,9 @@ class LeafImage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     size_bytes: Mapped[int] = mapped_column(Integer)
     width: Mapped[int] = mapped_column(Integer)
     height: Mapped[int] = mapped_column(Integer)
+    # Где снято фото, по EXIF
+    latitude: Mapped[float | None]
+    longitude: Mapped[float | None]
 
     owner: Mapped["User"] = relationship(back_populates="leaf_images")
     vineyard: Mapped["Vineyard | None"] = relationship(back_populates="leaf_images")

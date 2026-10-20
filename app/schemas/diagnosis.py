@@ -7,6 +7,8 @@ from pydantic import AwareDatetime, Field
 from app.schemas.base import EntityResponse, RequestSchema, ResponseSchema
 from app.schemas.pagination import PageParams
 
+Overlay = Literal["heatmap", "lesion"]
+
 
 class DiseaseProbability(ResponseSchema):
     disease: str = Field(examples=["powdery_mildew"])
@@ -94,6 +96,8 @@ class DiagnosisRecordRead(EntityResponse):
     # Вероятности классов по убыванию
     top: list[DiseaseProbability]
     severity: float | None = Field(ge=0, le=1)
+    # Сохранённые наложения: GET /diagnoses/{id}/overlays/{heatmap|lesion}
+    overlays: list[Overlay]
     # None — агроном ещё не смотрел
     review: ReviewRead | None
 

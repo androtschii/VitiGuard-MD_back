@@ -81,6 +81,9 @@ class DiseaseResult(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Top-K вероятностей: {"downy_mildew": 0.91, "healthy": 0.06, ...}
     probabilities: Mapped[dict[str, float] | None] = mapped_column(JSONB)
     severity: Mapped[float | None]
+    # Тепловая карта и маска поражения (PNG) в объектном хранилище
+    heatmap_key: Mapped[str | None] = mapped_column(String(512))
+    lesion_key: Mapped[str | None] = mapped_column(String(512))
     error: Mapped[str | None] = mapped_column(String(1000))
     # Заключение агронома (pr-052): подтверждённый или исправленный диагноз.
     # Совпадает с predicted_class — модель права; нет — ошиблась. Для журнала

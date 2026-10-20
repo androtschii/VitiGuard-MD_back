@@ -222,4 +222,6 @@ def test_worker_saves_to_history(
     assert history["items"][0]["id"] == result["diagnosis"]["id"]
     assert history["items"][0]["severity"] == pytest.approx(1)
     assert "jobs/key.jpg" not in storage.files
-    assert len(storage.files) == 1
+    # Фото и маска поражения; тепловой карты у тестового классификатора нет
+    assert len(storage.files) == 2
+    assert history["items"][0]["overlays"] == ["lesion"]

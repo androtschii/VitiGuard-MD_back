@@ -6,17 +6,20 @@ from fastapi import APIRouter, Query, Response, status
 from fastapi.concurrency import run_in_threadpool
 
 from app.api.deps import AgronomistDep, CurrentUserDep, SessionDep, StorageDep
+from app.core.errors import NotFoundError
 from app.models.diagnosis import DiseaseResult
 from app.repositories.diagnosis import DiagnosisFilter, DiagnosisRepository
 from app.schemas.diagnosis import (
     DiagnosisQuery,
     DiagnosisRecordRead,
     DiseaseProbability,
+    Overlay,
     ReviewRead,
     ReviewUpdate,
 )
 from app.schemas.errors import ErrorResponse
 from app.schemas.pagination import Page
+from app.services.diagnosis_history import overlay_key
 
 # История проверок по фото (pr-053): журнал предсказаний пользователя — для
 # галереи на сайте и для будущего дообучения модели
@@ -47,6 +50,11 @@ def to_record(result: DiseaseResult) -> DiagnosisRecordRead:
                 else None
             ),
         )
+    overlays: list[Overlay] = []
+    if result.heatmap_key:
+        overlays.append("heatmap")
+    if result.lesion_key:
+        overlays.append("lesion")
     return DiagnosisRecordRead(
         id=result.id,
         created_at=result.created_at,
@@ -59,6 +67,7 @@ def to_record(result: DiseaseResult) -> DiagnosisRecordRead:
         confidence=result.confidence or 0,
         top=[DiseaseProbability(disease=d, probability=p) for d, p in probabilities],
         severity=result.severity,
+        overlays=overlays,
         review=review,
     )
 
@@ -122,7 +131,33 @@ async def delete_diagnosis(
     # Фото удаляется вместе со всеми его проверками (каскад в базе)
     await session.delete(image)
     await session.commit()
-    await run_in_threadpool(storage.delete, key)
+    for file_key in (key, overlay_key(key, "heatmap"), overlay_key(key, "lesion")):
+        await run_in_threadpool(storage.delete, file_key)
+
+
+@router.get(
+    "/{diagnosis_id}/overlays/{overlay}",
+    summary="Тепловая карта или маска поражения проверки",
+    response_class=Response,
+    responses={**NOT_FOUND, status.HTTP_200_OK: {"content": {"image/png": {}}}},
+)
+async def diagnosis_overlay(
+    diagnosis_id: uuid.UUID,
+    overlay: Overlay,
+    user: CurrentUserDep,
+    session: SessionDep,
+    storage: StorageDep,
+) -> Response:
+    result = await DiagnosisRepository(session).get_for_owner(user.id, diagnosis_id)
+    key = result.heatmap_key if overlay == "heatmap" else result.lesion_key
+    if key is None:
+        raise NotFoundError("Наложение не сохранено")
+    data = await run_in_threadpool(storage.get, key)
+    return Response(
+        data,
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 # Заключение агронома (pr-052): подтвердить диагноз модели или исправить его.

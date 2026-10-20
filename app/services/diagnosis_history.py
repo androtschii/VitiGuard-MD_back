@@ -1,3 +1,4 @@
+import base64
 import uuid
 
 from fastapi.concurrency import run_in_threadpool
@@ -5,6 +6,7 @@ from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.object_storage import Storage
+from app.ml.overlays import PNG_DATA_URL
 from app.models.diagnosis import DiseaseResult, LeafImage
 from app.models.enums import ProcessingStatus
 from app.schemas.diagnosis import DiagnosisRead
@@ -19,6 +21,15 @@ def storage_key(owner_id: uuid.UUID, image_id: uuid.UUID, leaf: Image.Image) -> 
     return f"{owner_id}/{image_id}.{extension}"
 
 
+def overlay_key(photo_key: str, overlay: str) -> str:
+    # Наложения лежат рядом с фото: <владелец>/<фото>.heatmap.png
+    return f"{photo_key.rsplit('.', 1)[0]}.{overlay}.png"
+
+
+def png_bytes(data_url: str) -> bytes:
+    return base64.b64decode(data_url.removeprefix(PNG_DATA_URL))
+
+
 async def save_diagnosis(
     session: AsyncSession,
     storage: Storage,
@@ -29,8 +40,9 @@ async def save_diagnosis(
     diagnosis: DiagnosisRead,
     model_version: str,
 ) -> uuid.UUID:
-    """Фото — в хранилище, проверка — в историю (pr-039, pr-053). Если запись
-    в базу не удалась, фото удаляется: файлов без записи не остаётся."""
+    """Фото, тепловая карта и маска поражения — в хранилище, проверка — в
+    историю. Если запись в базу не удалась, файлы удаляются: файлов без записи
+    не остаётся."""
     image = LeafImage(
         owner_id=owner_id,
         vineyard_id=vineyard_id,
@@ -55,11 +67,22 @@ async def save_diagnosis(
         probabilities={item.disease: item.probability for item in diagnosis.top},
         severity=diagnosis.lesion.severity if diagnosis.lesion else None,
     )
+    files = [(key, data, image.content_type)]
+    if diagnosis.heatmap:
+        result.heatmap_key = overlay_key(key, "heatmap")
+        files.append((result.heatmap_key, png_bytes(diagnosis.heatmap), "image/png"))
+    if diagnosis.lesion:
+        result.lesion_key = overlay_key(key, "lesion")
+        files.append((result.lesion_key, png_bytes(diagnosis.lesion.mask), "image/png"))
     session.add(result)
-    await run_in_threadpool(storage.put, key, data, image.content_type)
+    saved: list[str] = []
     try:
+        for file_key, content, content_type in files:
+            await run_in_threadpool(storage.put, file_key, content, content_type)
+            saved.append(file_key)
         await session.commit()
     except Exception:
-        await run_in_threadpool(storage.delete, key)
+        for file_key in saved:
+            await run_in_threadpool(storage.delete, file_key)
         raise
     return result.id

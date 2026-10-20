@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -36,6 +37,21 @@ class VegetationObservationRead(ResponseSchema):
     ndre: IndexValueRead | None
     # None — участок был закрыт облаками или снимок обработан до картограмм
     ndvi_map: NdviMapRead | None
+
+
+class NdviAnomalyRead(ResponseSchema):
+    """Снимок с просадкой NDVI: ниже своей нормы для этих дней и ниже соседей."""
+
+    acquired_at: datetime
+    ndvi: float = Field(ge=-1, le=1)
+    # Насколько NDVI ниже медианы своих снимков ±20 дней
+    below_norm: float
+    # Насколько ниже медианы других участков ±3 дня; None — их снимков мало
+    below_peers: float | None
+    # Просадка в разбросах отклонений участка от своей нормы
+    z: float
+    # suspected — один снимок; confirmed — предыдущий чистый снимок тоже с просадкой
+    level: Literal["suspected", "confirmed"]
 
 
 class VegetationRefreshStarted(BaseModel):

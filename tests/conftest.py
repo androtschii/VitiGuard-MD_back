@@ -8,6 +8,7 @@ from alembic import command
 from alembic.config import Config
 from docker.errors import DockerException
 from fastapi.testclient import TestClient
+from memory_cache import MemoryCache
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
@@ -131,5 +132,7 @@ def api_client(
         database_url=migrated_database_url,  # type: ignore[arg-type]
     )
     with TestClient(create_app(settings)) as client:
+        # Свой кэш у каждого теста: данные в базе тесты меняют напрямую SQL
+        client.app.state.cache = MemoryCache()  # type: ignore[attr-defined]
         yield client
     run_sql("TRUNCATE users CASCADE")

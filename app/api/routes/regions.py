@@ -1,6 +1,6 @@
 from fastapi import APIRouter, status
 
-from app.api.deps import CurrentUserDep, SessionDep
+from app.api.deps import CacheDep, CurrentUserDep, SessionDep
 from app.schemas.errors import ErrorResponse
 from app.schemas.region import DistrictStats
 from app.services.region import district_stats
@@ -14,6 +14,6 @@ router = APIRouter(
 
 @router.get("/stats", summary="Сводная статистика по районам Молдовы")
 async def read_district_stats(
-    user: CurrentUserDep, session: SessionDep
+    user: CurrentUserDep, session: SessionDep, cache: CacheDep
 ) -> list[DistrictStats]:
-    return await district_stats(session, user.id)
+    return await district_stats(session, user.id, cache)

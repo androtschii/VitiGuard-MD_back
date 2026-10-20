@@ -3,8 +3,9 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Query, status
 from pydantic import BaseModel
 
-from app.api.deps import AdminDep, CurrentUserDep, SessionDep
+from app.api.deps import AdminDep, CacheDep, CurrentUserDep, SessionDep
 from app.core.errors import BadRequestError
+from app.integrations.cache import cached
 from app.schemas.errors import ErrorResponse
 from app.services.osm import osm_vineyards_in_bbox
 from app.tasks.osm import import_vineyards
@@ -45,6 +46,7 @@ async def list_osm_vineyards(
     bbox: Annotated[str, Query(description="west,south,east,north в градусах")],
     _: CurrentUserDep,
     session: SessionDep,
+    cache: CacheDep,
 ) -> dict[str, Any]:
     try:
         west, south, east, north = (float(value) for value in bbox.split(","))
@@ -54,4 +56,11 @@ async def list_osm_vineyards(
         raise BadRequestError("bbox: границы окна заданы неверно")
     if east - west > MAX_BBOX_DEGREES or north - south > MAX_BBOX_DEGREES:
         raise BadRequestError("bbox: окно больше 1° — приблизьте карту")
-    return await osm_vineyards_in_bbox(session, west, south, east, north)
+    # Клиент округляет окно до сотых градуса, поэтому соседние сдвиги карты
+    # попадают в одни и те же ключи
+    result: dict[str, Any] = await cached(
+        cache,
+        f"gis:osm-bbox:{west},{south},{east},{north}",
+        lambda: osm_vineyards_in_bbox(session, west, south, east, north),
+    )
+    return result

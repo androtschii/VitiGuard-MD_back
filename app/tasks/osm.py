@@ -6,6 +6,7 @@ from celery import shared_task
 from app import __version__
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine, create_session_factory
+from app.integrations.cache import OSM_VERSION, RedisCache
 from app.integrations.overpass import OverpassClient
 from app.services.osm import import_osm_vineyards
 
@@ -22,6 +23,12 @@ async def run_import(settings: Settings) -> dict[str, int]:
             await session.commit()
     finally:
         await engine.dispose()
+    # Новые полигоны — новая версия: кэш слоя и статистики районов устарел
+    cache = RedisCache.from_settings(settings)
+    try:
+        await cache.bump(OSM_VERSION)
+    finally:
+        await cache.close()
     return {
         "imported": stats.imported,
         "deleted": stats.deleted,

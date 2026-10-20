@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     # Redis: брокер очереди задач Celery и хранилище их результатов (разные базы Redis)
     celery_broker_url: RedisDsn = RedisDsn("redis://127.0.0.1:6379/0")
     celery_result_backend: RedisDsn = RedisDsn("redis://127.0.0.1:6379/1")
+    # Кэш тяжёлых ГИС-запросов (слой OSM, статистика районов) — своя база Redis
+    cache_url: RedisDsn = RedisDsn("redis://127.0.0.1:6379/2")
     # Мягкий лимит даёт задаче шанс завершиться сам (SoftTimeLimitExceeded), жёсткий
     # останавливает процесс; значения в секундах
     celery_task_soft_time_limit: int = Field(default=300, gt=0)

@@ -22,6 +22,7 @@ COLORS = np.array(
     dtype=np.float32,
 )
 LESION_RGBA = (220, 38, 38, 150)
+PNG_DATA_URL = "data:image/png;base64,"
 
 
 def overlay_size(width: int, height: int, side: int = MAX_SIDE) -> tuple[int, int]:
@@ -32,7 +33,7 @@ def overlay_size(width: int, height: int, side: int = MAX_SIDE) -> tuple[int, in
 def to_data_url(image: Image.Image) -> str:
     buffer = io.BytesIO()
     image.save(buffer, "PNG", optimize=True)
-    return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+    return PNG_DATA_URL + base64.b64encode(buffer.getvalue()).decode()
 
 
 def heatmap(activation: np.ndarray, size: tuple[int, int]) -> str:

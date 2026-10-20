@@ -11,9 +11,10 @@ from memory_storage import MemoryStorage
 from PIL import Image
 
 from app.core.config import Settings
-from app.models.diagnosis import DiseaseResult
+from app.ml.overlays import PNG_DATA_URL
+from app.models.diagnosis import DiseaseResult, LeafImage
 from app.schemas.diagnosis import DiagnosisRead, DiseaseProbability, LesionRead
-from app.services.diagnosis_history import save_diagnosis, storage_key
+from app.services.diagnosis_history import overlay_key, save_diagnosis, storage_key
 
 RunSql = Callable[[str], list[tuple[object, ...]]]
 CREDENTIALS = {"email": "grower@example.md", "password": "secret123"}
@@ -99,6 +100,7 @@ def test_saved_diagnosis_in_history(client: TestClient, storage: MemoryStorage) 
     assert len(record["model_version"]) == 16
     assert record["top"][0]["disease"] == "healthy"
     assert record["severity"] is None
+    assert record["overlays"] == []
 
     image = client.get(f"/api/v1/diagnoses/{saved['id']}/image", headers=headers)
     assert image.status_code == 200
@@ -107,7 +109,9 @@ def test_saved_diagnosis_in_history(client: TestClient, storage: MemoryStorage) 
 
 
 @pytest.mark.integration
-def test_history_keeps_severity(client: TestClient, tmp_path: Path) -> None:
+def test_history_keeps_severity(
+    client: TestClient, tmp_path: Path, storage: MemoryStorage
+) -> None:
     app: Any = client.app
     settings: Settings = app.state.settings
     app.state.settings = settings.model_copy(
@@ -120,6 +124,20 @@ def test_history_keeps_severity(client: TestClient, tmp_path: Path) -> None:
     record = client.get("/api/v1/diagnoses", headers=headers).json()["items"][0]
     assert record["severity"] == pytest.approx(saved["lesion"]["severity"])
     assert record["severity"] == pytest.approx(1)
+    # Маска сохранена, тепловой карты у тестового классификатора нет
+    assert record["overlays"] == ["lesion"]
+    url = f"/api/v1/diagnoses/{saved['id']}"
+    lesion = client.get(f"{url}/overlays/lesion", headers=headers)
+    assert lesion.status_code == 200
+    assert lesion.headers["content-type"] == "image/png"
+    assert lesion.content.startswith(b"\x89PNG")
+    assert client.get(f"{url}/overlays/heatmap", headers=headers).status_code == 404
+    assert client.get(f"{url}/overlays/other", headers=headers).status_code == 422
+    stranger = login(client, "neighbour@example.md")
+    assert client.get(f"{url}/overlays/lesion", headers=stranger).status_code == 404
+
+    assert client.delete(url, headers=headers).status_code == 204
+    assert storage.files == {}
 
 
 @pytest.mark.integration
@@ -243,6 +261,53 @@ async def test_severity_saved_with_result(severity: float | None) -> None:
 
     [result] = [item for item in session.added if isinstance(item, DiseaseResult)]
     assert result.severity == severity
+
+
+def overlaid_diagnosis() -> DiagnosisRead:
+    diagnosis = tiny_diagnosis(LesionRead(mask=PNG_DATA_URL + "bWFzaw==", severity=0.2))
+    diagnosis.heatmap = PNG_DATA_URL + "aGVhdA=="
+    return diagnosis
+
+
+async def save(session: RecordingSession, storage: MemoryStorage) -> None:
+    await save_diagnosis(
+        session,  # type: ignore[arg-type]
+        storage,
+        uuid.uuid4(),
+        None,
+        b"jpeg",
+        Image.new("RGB", (4, 4)),
+        overlaid_diagnosis(),
+        "v1",
+    )
+
+
+async def test_overlays_saved_next_to_photo() -> None:
+    session, storage = RecordingSession(), MemoryStorage()
+
+    await save(session, storage)
+
+    [result] = [item for item in session.added if isinstance(item, DiseaseResult)]
+    [image] = [item for item in session.added if isinstance(item, LeafImage)]
+    photo = image.storage_key.removesuffix(".jpg")
+    assert result.heatmap_key == f"{photo}.heatmap.png"
+    assert result.lesion_key == f"{photo}.lesion.png"
+    assert storage.files[result.heatmap_key] == (b"heat", "image/png")
+    assert storage.files[result.lesion_key] == (b"mask", "image/png")
+    assert len(storage.files) == 3
+
+
+async def test_failed_commit_removes_overlays() -> None:
+    storage = MemoryStorage()
+
+    with pytest.raises(RuntimeError):
+        await save(FailingSession(), storage)
+
+    assert storage.files == {}
+
+
+def test_overlay_key_follows_photo() -> None:
+    assert overlay_key("owner/photo.webp", "lesion") == "owner/photo.lesion.png"
 
 
 async def test_failed_commit_removes_photo() -> None:

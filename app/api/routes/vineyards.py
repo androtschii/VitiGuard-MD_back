@@ -12,6 +12,7 @@ from app.schemas.errors import ErrorResponse
 from app.schemas.pagination import Page
 from app.schemas.vegetation import (
     IndexValueRead,
+    NdviMapRead,
     VegetationObservationRead,
     VegetationRefreshStarted,
 )
@@ -28,7 +29,7 @@ from app.services.boundary_export import ExportFormat, to_geojson, to_shapefile_
 from app.services.boundary_files import parse_boundaries
 from app.services.osm import vineyard_context
 from app.services.region import district_of
-from app.services.vegetation_history import vegetation_history
+from app.services.vegetation_history import ndvi_image, vegetation_history
 from app.services.vineyard import (
     ensure_variety_exists,
     import_boundaries,
@@ -352,12 +353,41 @@ async def read_vegetation(
         }
         observations.append(
             VegetationObservationRead(
+                id=scan.id,
                 acquired_at=scan.acquired_at,
                 platform=scan.platform,
                 scene_cloud_cover=scan.cloud_cover,
                 parcel_cloud_cover=scan.parcel_cloud_cover,
                 ndvi=values.get(IndexType.NDVI),
                 ndre=values.get(IndexType.NDRE),
+                ndvi_map=(
+                    NdviMapRead(corners=scan.ndvi_corners)
+                    if scan.ndvi_corners
+                    else None
+                ),
             )
         )
     return observations
+
+
+@router.get(
+    "/{vineyard_id}/vegetation/{scan_id}/ndvi.png",
+    summary="Картограмма NDVI участка по снимку",
+    response_class=Response,
+    responses={
+        status.HTTP_200_OK: {"content": {"image/png": {}}},
+        status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
+    },
+)
+async def read_ndvi_map(
+    vineyard_id: uuid.UUID,
+    scan_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> Response:
+    await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
+    return Response(
+        await ndvi_image(session, vineyard_id, scan_id),
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=86400"},
+    )

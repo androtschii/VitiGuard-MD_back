@@ -8,15 +8,18 @@ Optimized GeoTIFF, и GDAL скачивает по HTTP лишь нужные б
 Функции синхронные: чтение растров блокирует поток, поэтому они выполняются в
 задаче Celery, а не в обработчике запроса."""
 
+import io
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 import rasterio
+from PIL import Image
 from rasterio.enums import Resampling
 from rasterio.features import bounds as geometry_bounds
 from rasterio.features import geometry_mask
+from rasterio.warp import transform as transform_points
 from rasterio.warp import transform_geom
 from rasterio.windows import Window, from_bounds
 from rasterio.windows import bounds as window_bounds
@@ -36,6 +39,21 @@ GDAL_ENV = {
     "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif",
     "GDAL_HTTP_MAX_RETRY": "3",
 }
+# Палитра картограммы NDVI (RdYlGn): голая почва красная, густая листва зелёная
+NDVI_STOPS = np.array([0, 0.2, 0.4, 0.6, 0.8, 1])
+NDVI_COLORS = np.array(
+    [
+        [165, 0, 38],
+        [244, 109, 67],
+        [254, 224, 139],
+        [166, 217, 106],
+        [26, 152, 80],
+        [0, 104, 55],
+    ],
+    dtype=np.float32,
+)
+
+Corners = tuple[tuple[float, float], ...]
 
 
 @dataclass(frozen=True)
@@ -49,6 +67,15 @@ class ParcelBands:
     scl: np.ndarray
     # True — пиксель внутри контура участка
     inside: np.ndarray
+    # Углы окна в WGS 84, [долгота, широта]: верхний левый, верхний правый,
+    # нижний правый, нижний левый — порядок слоя-картинки на карте
+    corners: Corners = ()
+
+
+@dataclass(frozen=True)
+class NdviMap:
+    png: bytes
+    corners: Corners
 
 
 @dataclass(frozen=True)
@@ -139,6 +166,10 @@ def read_parcel(scene: EarthScene, geometry: dict[str, Any]) -> ParcelBands:
         inside = ~geometry_mask(
             [local], out_shape=shape, transform=transform, all_touched=True
         )
+    left, bottom, right, top = box
+    lons, lats = transform_points(
+        red.crs, "EPSG:4326", [left, right, right, left], [top, top, bottom, bottom]
+    )
     return ParcelBands(
         red=_reflectance(red_values, scene.bands["B04"]),
         rededge=_reflectance(rededge, scene.bands["B05"]),
@@ -146,6 +177,9 @@ def read_parcel(scene: EarthScene, geometry: dict[str, Any]) -> ParcelBands:
         nir_narrow=_reflectance(nir_narrow, scene.bands["B8A"]),
         scl=scl,
         inside=inside,
+        corners=tuple(
+            (round(lon, 7), round(lat, 7)) for lon, lat in zip(lons, lats, strict=True)
+        ),
     )
 
 
@@ -182,3 +216,23 @@ def compute_indices(bands: ParcelBands) -> ParcelIndices:
     ndvi = normalized_difference(bands.nir, bands.red)[clear]
     ndre = normalized_difference(bands.nir_narrow, bands.rededge)[clear]
     return ParcelIndices(parcel_pixels, clear_pixels, _stats(ndvi), _stats(ndre))
+
+
+def ndvi_map(bands: ParcelBands) -> NdviMap:
+    """Картограмма NDVI: пиксель 10 м — пиксель PNG. Вне контура, под облаками
+    и без сигнала — прозрачно, отрицательный NDVI окрашен как ноль."""
+    ndvi = normalized_difference(bands.nir, bands.red)
+    visible = bands.inside & np.isin(bands.scl, VALID_SCL) & np.isfinite(ndvi)
+    values = np.clip(np.nan_to_num(ndvi), 0, 1)
+    rgb = np.stack(
+        [
+            np.interp(values, NDVI_STOPS, NDVI_COLORS[:, channel])
+            for channel in range(3)
+        ],
+        axis=-1,
+    )
+    alpha = np.where(visible, 255, 0)
+    rgba = np.concatenate([rgb, alpha[..., None]], axis=-1).astype(np.uint8)
+    buffer = io.BytesIO()
+    Image.fromarray(rgba, mode="RGBA").save(buffer, "PNG", optimize=True)
+    return NdviMap(buffer.getvalue(), bands.corners)

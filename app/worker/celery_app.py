@@ -5,6 +5,7 @@ from app.core.config import Settings, get_settings
 # Модули с задачами; новые задачи (диагностика, спутниковые индексы, прогнозы)
 # добавляются сюда
 TASK_MODULES = [
+    "app.tasks.diagnosis",
     "app.tasks.mail",
     "app.tasks.osm",
     "app.tasks.risk",

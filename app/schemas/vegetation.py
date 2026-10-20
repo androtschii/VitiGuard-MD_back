@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 
 from pydantic import BaseModel, Field
@@ -14,9 +15,17 @@ class IndexValueRead(ResponseSchema):
     std: float = Field(ge=0)
 
 
+class NdviMapRead(ResponseSchema):
+    """Углы картограммы NDVI на карте; сам PNG — GET .../vegetation/{id}/ndvi.png."""
+
+    # [долгота, широта]: верхний левый, верхний правый, нижний правый, нижний левый
+    corners: list[list[float]] = Field(min_length=4, max_length=4)
+
+
 class VegetationObservationRead(ResponseSchema):
     """Один снимок Sentinel-2 по участку."""
 
+    id: uuid.UUID
     acquired_at: datetime
     platform: str | None = Field(examples=["sentinel-2a"])
     # Облачность всей сцены и над самим участком, %
@@ -25,6 +34,8 @@ class VegetationObservationRead(ResponseSchema):
     # None — участок был закрыт облаками
     ndvi: IndexValueRead | None
     ndre: IndexValueRead | None
+    # None — участок был закрыт облаками или снимок обработан до картограмм
+    ndvi_map: NdviMapRead | None
 
 
 class VegetationRefreshStarted(BaseModel):

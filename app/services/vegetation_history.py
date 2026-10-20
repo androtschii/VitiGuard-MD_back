@@ -26,8 +26,10 @@ from app.models.vineyard import Vineyard
 from app.services.satellite import vineyard_geojson
 from app.services.vegetation import (
     IndexStats,
+    NdviMap,
     ParcelIndices,
     compute_indices,
+    ndvi_map,
     read_parcel,
 )
 
@@ -45,8 +47,11 @@ class ProcessingStats:
     failed: int
 
 
-def _scene_indices(scene: EarthScene, geometry: dict[str, Any]) -> ParcelIndices:
-    return compute_indices(read_parcel(scene, geometry))
+def _read_scene(
+    scene: EarthScene, geometry: dict[str, Any]
+) -> tuple[ParcelIndices, NdviMap]:
+    bands = read_parcel(scene, geometry)
+    return compute_indices(bands), ndvi_map(bands)
 
 
 def _index(index_type: IndexType, stats: IndexStats) -> VegetationIndex:
@@ -80,21 +85,34 @@ async def process_vineyard(
     )
     # Только идентификаторы и статусы: объекты сессии устаревают после каждого
     # сохранения, а их поля в асинхронной сессии лениво не подгружаются
+    has_ndvi = (
+        select(VegetationIndex.id)
+        .where(
+            VegetationIndex.scan_id == SatelliteScan.id,
+            VegetationIndex.index_type == IndexType.NDVI,
+        )
+        .exists()
+    )
     known = {
-        product_id: (scan_id, status)
-        for scan_id, product_id, status in await session.execute(
+        product_id: (scan_id, status, has_map, with_ndvi)
+        for scan_id, product_id, status, has_map, with_ndvi in await session.execute(
             select(
-                SatelliteScan.id, SatelliteScan.product_id, SatelliteScan.status
+                SatelliteScan.id,
+                SatelliteScan.product_id,
+                SatelliteScan.status,
+                SatelliteScan.ndvi_corners.is_not(None),
+                has_ndvi,
             ).where(SatelliteScan.vineyard_id == vineyard_id)
         )
     }
     processed = cloudy = skipped = failed = 0
     for scene in scenes:
         entry = known.get(scene.product_id)
-        if entry is not None and entry[1] is ProcessingStatus.COMPLETED:
+        completed = entry is not None and entry[1] is ProcessingStatus.COMPLETED
+        # Готовый снимок читается заново, только если к его индексам нет картограммы
+        if entry is not None and completed and (entry[2] or not entry[3]):
             skipped += 1
             continue
-        # Снимок, который в прошлый раз не удалось прочитать, считается заново
         previous = (
             await session.get(
                 SatelliteScan,
@@ -115,22 +133,29 @@ async def process_vineyard(
                 cloud_cover=round(scene.cloud_cover, 2),
                 platform=scene.platform,
             )
+        has_failed = False
         try:
             # Чтение растров блокирует поток — в отдельном потоке
-            result = await asyncio.to_thread(_scene_indices, scene, geometry)
+            result, parcel_map = await asyncio.to_thread(_read_scene, scene, geometry)
         except OSError as error:
-            # Ошибки rasterio при чтении по HTTP — подклассы OSError
-            scan.status = ProcessingStatus.FAILED
-            scan.error = str(error)[:1000]
+            # Ошибки rasterio при чтении по HTTP — подклассы OSError. У готового
+            # снимка индексы остаются, картограмма будет в следующий раз
+            has_failed = True
+            if not completed:
+                scan.status = ProcessingStatus.FAILED
+                scan.error = str(error)[:1000]
         else:
-            scan.status = ProcessingStatus.COMPLETED
-            scan.error = None
-            scan.parcel_cloud_cover = round(result.cloud_share * 100, 1)
+            if not completed:
+                scan.status = ProcessingStatus.COMPLETED
+                scan.error = None
+                scan.parcel_cloud_cover = round(result.cloud_share * 100, 1)
+                if result.ndvi is not None:
+                    scan.indices.append(_index(IndexType.NDVI, result.ndvi))
+                if result.ndre is not None:
+                    scan.indices.append(_index(IndexType.NDRE, result.ndre))
             if result.ndvi is not None:
-                scan.indices.append(_index(IndexType.NDVI, result.ndvi))
-            if result.ndre is not None:
-                scan.indices.append(_index(IndexType.NDRE, result.ndre))
-        has_failed = scan.status is ProcessingStatus.FAILED
+                scan.ndvi_image = parcel_map.png
+                scan.ndvi_corners = [list(corner) for corner in parcel_map.corners]
         has_indices = bool(scan.indices)
         session.add(scan)
         # Каждый снимок сохраняется сразу: обработка сезона идёт минуты, и при
@@ -166,3 +191,16 @@ async def vegetation_history(
         .order_by(SatelliteScan.acquired_at)
     )
     return scans.all()
+
+
+async def ndvi_image(
+    session: AsyncSession, vineyard_id: uuid.UUID, scan_id: uuid.UUID
+) -> bytes:
+    image = await session.scalar(
+        select(SatelliteScan.ndvi_image).where(
+            SatelliteScan.id == scan_id, SatelliteScan.vineyard_id == vineyard_id
+        )
+    )
+    if image is None:
+        raise NotFoundError("Картограмма NDVI не найдена")
+    return image

@@ -1,13 +1,16 @@
+import io
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
+from PIL import Image
 from raster_scene import CLEAR, CLOUD, PARCEL, make_scene
 
 from app.services.vegetation import (
     ParcelBands,
     compute_indices,
+    ndvi_map,
     normalized_difference,
     read_parcel,
 )
@@ -72,6 +75,36 @@ def test_parcel_smaller_than_pixel_takes_its_pixel(tmp_path: Path) -> None:
 
     assert result.parcel_pixels >= 1
     assert result.ndvi is not None
+
+
+def test_ndvi_map_of_parcel(tmp_path: Path) -> None:
+    scl = np.full((20, 20), CLEAR, dtype=np.uint16)
+    scl[:9] = CLOUD
+    bands = read_parcel(make_scene(tmp_path, scl=scl), PARCEL)
+
+    result = ndvi_map(bands)
+
+    image = np.asarray(Image.open(io.BytesIO(result.png)))
+    assert image.shape == (*bands.red.shape, 4)
+    visible = image[..., 3] == 255
+    clear = bands.inside & (bands.scl == CLEAR)
+    assert (visible == clear).all()
+    assert (image[~visible, 3] == 0).all()
+    # NDVI 0,71 — между светло- и тёмно-зелёным палитры
+    red, green, _ = image[visible][0, :3]
+    assert green > red
+    lons = [lon for lon, _ in result.corners]
+    lats = [lat for _, lat in result.corners]
+    assert len(result.corners) == 4
+    # Окно выровнено по сетке 10 м: края — в пределах пикселя от контура
+    assert min(lons) == pytest.approx(28.8600, abs=2e-4)
+    assert max(lons) == pytest.approx(28.8613, abs=2e-4)
+    assert min(lats) == pytest.approx(47.1400, abs=1e-4)
+    assert max(lats) == pytest.approx(47.1409, abs=1e-4)
+    top_left, top_right, bottom_right, bottom_left = result.corners
+    assert top_left[1] > bottom_left[1]
+    assert top_right[0] > top_left[0]
+    assert bottom_right[1] < top_right[1]
 
 
 def test_normalized_difference_without_signal_is_nan() -> None:

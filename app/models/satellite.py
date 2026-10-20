@@ -3,7 +3,14 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, ForeignKey, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    LargeBinary,
+    String,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -48,6 +55,10 @@ class SatelliteScan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=ProcessingStatus.PENDING.value,
     )
     error: Mapped[str | None] = mapped_column(String(1000))
+    # Картограмма NDVI (PNG, единицы килобайт) и её углы [долгота, широта]:
+    # читается только по запросу картинки, не со списком снимков
+    ndvi_image: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
+    ndvi_corners: Mapped[list[list[float]] | None] = mapped_column(JSONB)
 
     vineyard: Mapped["Vineyard"] = relationship(back_populates="satellite_scans")
     indices: Mapped[list["VegetationIndex"]] = relationship(

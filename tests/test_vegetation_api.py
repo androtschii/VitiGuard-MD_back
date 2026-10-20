@@ -114,6 +114,21 @@ def test_processing_saves_indices_and_history(
     assert clear["parcel_cloud_cover"] == 0
     assert clear["ndvi"]["mean"] == pytest.approx(0.714, abs=1e-3)
     assert clear["ndre"]["mean"] == pytest.approx(0.5, abs=1e-3)
+    assert cloudy["ndvi_map"] is None
+    assert len(clear["ndvi_map"]["corners"]) == 4
+
+    image = api_client.get(
+        f"/api/v1/vineyards/{vineyard_id}/vegetation/{clear['id']}/ndvi.png",
+        headers=headers,
+    )
+    assert image.status_code == 200
+    assert image.headers["content-type"] == "image/png"
+    assert image.content.startswith(b"\x89PNG")
+    missing = api_client.get(
+        f"/api/v1/vineyards/{vineyard_id}/vegetation/{cloudy['id']}/ndvi.png",
+        headers=headers,
+    )
+    assert missing.status_code == 404
 
     # Повторный запуск: готовые снимки пропускаются, сбойный считается заново
     found[2] = make_scene(
@@ -139,6 +154,60 @@ def test_processing_saves_indices_and_history(
     ]
 
 
+def test_processing_adds_map_to_scan_without_it(
+    api_client: TestClient,
+    tmp_path: Path,
+    process: Callable[[str, list[EarthScene]], dict[str, int]],
+    run_sql: RunSql,
+) -> None:
+    vineyard_id = create_vineyard(api_client, login(api_client))
+    found = [make_scene(tmp_path)]
+    process(vineyard_id, found)
+    run_sql("UPDATE satellite_scans SET ndvi_image = NULL, ndvi_corners = NULL")
+
+    result = process(vineyard_id, found)
+
+    assert result == {
+        "found": 1,
+        "processed": 1,
+        "cloudy": 0,
+        "skipped": 0,
+        "failed": 0,
+    }
+    assert run_sql(
+        "SELECT count(*) FROM satellite_scans WHERE ndvi_image IS NOT NULL"
+    ) == [(1,)]
+    assert run_sql("SELECT count(*) FROM vegetation_indices") == [(2,)]
+
+    found[0].bands["B08"] = Band(href=str(tmp_path / "missing.tif"))
+    run_sql("UPDATE satellite_scans SET ndvi_image = NULL, ndvi_corners = NULL")
+    failed = process(vineyard_id, found)
+
+    assert failed["failed"] == 1
+    assert run_sql("SELECT status FROM satellite_scans") == [("completed",)]
+
+
+def test_ndvi_map_of_foreign_vineyard_looks_missing(
+    api_client: TestClient,
+    tmp_path: Path,
+    process: Callable[[str, list[EarthScene]], dict[str, int]],
+) -> None:
+    headers = login(api_client)
+    vineyard_id = create_vineyard(api_client, headers)
+    process(vineyard_id, [make_scene(tmp_path)])
+    [scan] = api_client.get(
+        f"/api/v1/vineyards/{vineyard_id}/vegetation", headers=headers
+    ).json()
+    stranger = login(api_client, "stranger@example.md")
+
+    response = api_client.get(
+        f"/api/v1/vineyards/{vineyard_id}/vegetation/{scan['id']}/ndvi.png",
+        headers=stranger,
+    )
+
+    assert response.status_code == 404
+
+
 def test_processing_missing_vineyard_fails(
     process: Callable[[str, list[EarthScene]], dict[str, int]],
 ) -> None:
@@ -157,7 +226,7 @@ def test_concurrent_task_saved_same_scene(
     сохранение упирается в уникальность, и снимок считается пропущенным."""
     vineyard_id = create_vineyard(api_client, login(api_client))
     scene = make_scene(tmp_path)
-    reading = vegetation_history._scene_indices
+    reading = vegetation_history._read_scene
 
     def racing(found: EarthScene, geometry: dict[str, Any]) -> Any:
         result = reading(found, geometry)
@@ -168,7 +237,7 @@ def test_concurrent_task_saved_same_scene(
         )
         return result
 
-    monkeypatch.setattr(vegetation_history, "_scene_indices", racing)
+    monkeypatch.setattr(vegetation_history, "_read_scene", racing)
 
     result = process(vineyard_id, [scene])
 

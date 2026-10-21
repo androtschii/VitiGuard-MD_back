@@ -10,6 +10,7 @@ from app.api.routes import (
     regions,
     risks,
     tiles,
+    treatments,
     users,
     varieties,
     vineyards,
@@ -26,6 +27,7 @@ api_router.include_router(osm.router)
 api_router.include_router(regions.router)
 api_router.include_router(risks.router)
 api_router.include_router(risks.today_router)
+api_router.include_router(treatments.router)
 api_router.include_router(weather.router)
 api_router.include_router(tiles.router)
 api_router.include_router(ai.router)

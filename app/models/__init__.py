@@ -1,10 +1,11 @@
 from app.models.alert import Alert
 from app.models.auth import PasswordResetToken, RefreshToken
 from app.models.diagnosis import DiseaseResult, LeafImage
-from app.models.enums import Disease, ProcessingStatus, RiskLevel
+from app.models.enums import Disease, Fungicide, ProcessingStatus, RiskLevel
 from app.models.osm import OsmVineyard
 from app.models.region import District
 from app.models.satellite import IndexType, SatelliteScan, VegetationIndex
+from app.models.treatment import Treatment
 from app.models.user import User, UserRole
 from app.models.variety import BerryColor, Susceptibility, Variety
 from app.models.vineyard import Vineyard
@@ -17,6 +18,7 @@ __all__ = [
     "DiseaseResult",
     "DiseaseRisk",
     "District",
+    "Fungicide",
     "IndexType",
     "LeafImage",
     "OsmVineyard",
@@ -26,6 +28,7 @@ __all__ = [
     "RiskLevel",
     "SatelliteScan",
     "Susceptibility",
+    "Treatment",
     "User",
     "UserRole",
     "Variety",

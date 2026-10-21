@@ -8,8 +8,10 @@ from app.core.config import Settings, get_settings
 from app.core.errors import ExternalServiceError
 from app.db.session import create_engine, create_session_factory
 from app.integrations.open_meteo import OpenMeteoClient
+from app.integrations.telegram import TelegramClient
 from app.models.vineyard import Vineyard
-from app.services.risk import refresh_risks
+from app.services.risk import local_today, refresh_risks
+from app.services.telegram_bot import send_alerts
 
 REFRESH_ALL = "risk.refresh_all"
 
@@ -18,7 +20,7 @@ async def run_refresh_all(settings: Settings) -> dict[str, int]:
     """Пересчёт риска всех участков. Сбой погоды по одному участку не
     останавливает остальные — участок пересчитается в следующий раз."""
     engine = create_engine(settings)
-    refreshed = failed = 0
+    refreshed = failed = notified = 0
     try:
         async with (
             httpx.AsyncClient(timeout=settings.external_http_timeout) as http,
@@ -34,9 +36,17 @@ async def run_refresh_all(settings: Settings) -> dict[str, int]:
                     failed += 1
                 else:
                     refreshed += 1
+            # Новые предупреждения — в Telegram, если бот настроен (pr-083)
+            notified = (
+                await send_alerts(
+                    session, TelegramClient(http, settings), local_today()
+                )
+                if settings.telegram_bot_token is not None
+                else 0
+            )
     finally:
         await engine.dispose()
-    return {"refreshed": refreshed, "failed": failed}
+    return {"refreshed": refreshed, "failed": failed, "notified": notified}
 
 
 # Запускается Celery Beat по расписанию (pr-079). Участков может быть много, а

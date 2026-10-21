@@ -4,20 +4,28 @@
 Чат привязывается к учётной записи одноразовой ссылкой из профиля
 (`t.me/<бот>?start=<код>`): бот не спрашивает пароль, а код живёт 15 минут и
 срабатывает один раз. Анализ фото идёт в задаче Celery — Telegram ждёт ответа
-на вебхук недолго, а модель и загрузка файла занимают секунды."""
+на вебхук недолго, а модель и загрузка файла занимают секунды.
+
+В тот же чат приходят предупреждения о риске болезней (pr-083); по каким
+участкам — владелец выбирает кнопками по команде /alerts."""
 
 import secrets
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from datetime import date, timedelta
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import ExternalServiceError
 from app.integrations.cache import Cache
 from app.integrations.telegram import TelegramClient
+from app.models.alert import Alert
+from app.models.enums import Disease, RiskLevel
 from app.models.user import User
+from app.models.vineyard import Vineyard
 
 LINK_TTL_SECONDS = 15 * 60
 DIAGNOSE_PHOTO = "telegram.diagnose_photo"
@@ -33,7 +41,8 @@ DISEASE_NAMES = {
 
 HELP = (
     "Пришлите фото листа винограда — один лист крупным планом, при дневном "
-    "свете. Бот определит болезнь и сохранит проверку в историю VitiGuard MD."
+    "свете. Бот определит болезнь и сохранит проверку в историю VitiGuard MD. "
+    "Предупреждения о риске по участкам — команда /alerts."
 )
 NOT_LINKED = (
     "Этот чат не привязан к учётной записи. Откройте профиль в VitiGuard MD, "
@@ -57,6 +66,7 @@ class Document(BaseModel):
 
 
 class Message(BaseModel):
+    message_id: int = 0
     chat: Chat
     text: str | None = None
     photo: list[PhotoSize] = []
@@ -64,9 +74,18 @@ class Message(BaseModel):
     document: Document | None = None
 
 
+class CallbackQuery(BaseModel):
+    """Нажатие кнопки под сообщением бота."""
+
+    id: str
+    message: Message | None = None
+    data: str | None = None
+
+
 class Update(BaseModel):
     update_id: int
     message: Message | None = None
+    callback_query: CallbackQuery | None = None
 
 
 def link_key(code: str) -> str:
@@ -117,6 +136,9 @@ async def handle_update(
     telegram: TelegramClient,
     enqueue: Callable[[str, list[Any]], object],
 ) -> None:
+    if update_.callback_query is not None:
+        await toggle_subscription(session, telegram, update_.callback_query)
+        return
     message = update_.message
     if message is None:
         return
@@ -145,6 +167,18 @@ async def handle_update(
     file_id = photo_file(message)
     if owner is None:
         await telegram.send_message(chat_id, NOT_LINKED)
+    elif text == "/alerts":
+        vineyards = await owned_vineyards(session, owner)
+        await telegram.send_message(
+            chat_id,
+            (
+                "Предупреждения о риске болезней по участкам. "
+                "Нажмите на участок, чтобы включить или выключить."
+                if vineyards
+                else "Участков пока нет: нарисуйте их на карте в VitiGuard MD."
+            ),
+            alerts_keyboard(vineyards) if vineyards else None,
+        )
     elif file_id is None:
         await telegram.send_message(chat_id, HELP)
     else:
@@ -162,3 +196,137 @@ def diagnosis_text(disease: str, confidence: float, low_confidence: bool) -> str
         )
     lines.append("Проверка сохранена в истории VitiGuard MD.")
     return "\n".join(lines)
+
+
+ALERTS_PREFIX = "alerts:"
+LEVEL_NAMES = {RiskLevel.MEDIUM: "средний", RiskLevel.HIGH: "высокий"}
+
+
+async def owned_vineyards(session: AsyncSession, owner: User) -> list[Vineyard]:
+    rows = await session.scalars(
+        select(Vineyard).where(Vineyard.owner_id == owner.id).order_by(Vineyard.name)
+    )
+    return list(rows)
+
+
+def alerts_keyboard(vineyards: Sequence[Vineyard]) -> dict[str, Any]:
+    """Кнопка на участок: колокольчик — предупреждения приходят. В данных
+    кнопки — только номер участка (до 64 байт), владелец проверяется заново."""
+    return {
+        "inline_keyboard": [
+            [
+                {
+                    "text": f"{'🔔' if vineyard.telegram_alerts else '🔕'} {vineyard.name}",
+                    "callback_data": f"{ALERTS_PREFIX}{vineyard.id}",
+                }
+            ]
+            for vineyard in vineyards
+        ]
+    }
+
+
+async def toggle_subscription(
+    session: AsyncSession, telegram: TelegramClient, query: CallbackQuery
+) -> None:
+    message = query.message
+    data = query.data or ""
+    if message is None or not data.startswith(ALERTS_PREFIX):
+        await telegram.answer_callback(query.id, "Кнопка устарела")
+        return
+    owner = await session.scalar(
+        select(User).where(User.telegram_chat_id == message.chat.id, User.is_active)
+    )
+    try:
+        vineyard_id = uuid.UUID(data.removeprefix(ALERTS_PREFIX))
+    except ValueError:
+        vineyard_id = None
+    vineyard = (
+        await session.get(Vineyard, vineyard_id) if vineyard_id is not None else None
+    )
+    # Кнопку мог нажать чат, уже отвязанный от владельца участка
+    if owner is None or vineyard is None or vineyard.owner_id != owner.id:
+        await telegram.answer_callback(query.id, "Участок не найден")
+        return
+    vineyard.telegram_alerts = not vineyard.telegram_alerts
+    await session.commit()
+    await telegram.answer_callback(
+        query.id,
+        f"{vineyard.name}: предупреждения "
+        + ("включены" if vineyard.telegram_alerts else "выключены"),
+    )
+    await telegram.edit_reply_markup(
+        message.chat.id,
+        message.message_id,
+        alerts_keyboard(await owned_vineyards(session, owner)),
+    )
+
+
+# «Риск чего»: родительный падеж
+RISK_OF = {Disease.DOWNY_MILDEW: "милдью", Disease.POWDERY_MILDEW: "оидиума"}
+
+AlertRow = tuple[str, Disease, date, RiskLevel]
+
+
+def alerts_text(rows: Sequence[AlertRow], today: date) -> str:
+    lines = ["Предупреждения VitiGuard MD:"]
+    for name, disease, day, level in rows:
+        when = {today: "сегодня", today + timedelta(days=1): "завтра"}.get(
+            day, day.strftime("%d.%m")
+        )
+        lines.append(
+            f"• {name}: {LEVEL_NAMES.get(level, 'низкий')} риск "
+            f"{RISK_OF[disease]} {when}"
+        )
+    lines.append("Что делать — в окне «Риск по дням» участка.")
+    return "\n".join(lines)
+
+
+async def send_alerts(
+    session: AsyncSession, telegram: TelegramClient, today: date
+) -> int:
+    """Новые и усилившиеся предупреждения — в чаты владельцев (pr-083): одно
+    сообщение на чат. Прошедшие дни не отправляются. Если Telegram не принял
+    сообщение, отметка не ставится, и оно уйдёт при следующем пересчёте.
+    Возвращает число отправленных сообщений."""
+    rows = await session.execute(
+        select(
+            Alert.id,
+            User.telegram_chat_id,
+            Vineyard.name,
+            Alert.disease,
+            Alert.day,
+            Alert.level,
+        )
+        .join(User, User.id == Alert.user_id)
+        .join(Vineyard, Vineyard.id == Alert.vineyard_id)
+        .where(
+            Alert.notified_at.is_(None),
+            Alert.read_at.is_(None),
+            Alert.day >= today,
+            User.telegram_chat_id.is_not(None),
+            User.is_active,
+            Vineyard.telegram_alerts,
+        )
+        .order_by(User.telegram_chat_id, Vineyard.name, Alert.day, Alert.disease)
+    )
+    by_chat: dict[int, list[tuple[uuid.UUID, AlertRow]]] = {}
+    for alert_id, chat_id, name, disease, day, level in rows:
+        # Чат не NULL — это условие запроса
+        assert chat_id is not None
+        by_chat.setdefault(chat_id, []).append((alert_id, (name, disease, day, level)))
+    sent = 0
+    for chat_id, items in by_chat.items():
+        try:
+            await telegram.send_message(
+                chat_id, alerts_text([row for _, row in items], today)
+            )
+        except ExternalServiceError:
+            continue
+        await session.execute(
+            update(Alert)
+            .where(Alert.id.in_([alert_id for alert_id, _ in items]))
+            .values(notified_at=func.now())
+        )
+        await session.commit()
+        sent += 1
+    return sent

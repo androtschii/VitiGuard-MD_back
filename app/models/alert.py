@@ -34,6 +34,9 @@ class Alert(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     day: Mapped[date]
     level: Mapped[RiskLevel] = mapped_column(string_enum(RiskLevel, "risk_level"))
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Когда предупреждение ушло в Telegram (pr-083); NULL — ещё не отправлено.
+    # Рост уровня сбрасывает отметку: об усилении риска сообщается снова
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped["User"] = relationship()
     vineyard: Mapped["Vineyard"] = relationship()

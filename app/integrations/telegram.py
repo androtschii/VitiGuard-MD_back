@@ -33,8 +33,31 @@ class TelegramClient:
         self._api = settings.telegram_api_url.rstrip("/")
         self._token = settings.telegram_bot_token.get_secret_value()
 
-    async def send_message(self, chat_id: int, text: str) -> None:
-        await self._call("sendMessage", {"chat_id": chat_id, "text": text})
+    async def send_message(
+        self, chat_id: int, text: str, reply_markup: dict[str, Any] | None = None
+    ) -> None:
+        payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
+        if reply_markup is not None:
+            payload["reply_markup"] = reply_markup
+        await self._call("sendMessage", payload)
+
+    async def answer_callback(self, callback_id: str, text: str) -> None:
+        """Ответ на нажатие кнопки: короткая подсказка поверх чата."""
+        await self._call(
+            "answerCallbackQuery", {"callback_query_id": callback_id, "text": text}
+        )
+
+    async def edit_reply_markup(
+        self, chat_id: int, message_id: int, reply_markup: dict[str, Any]
+    ) -> None:
+        await self._call(
+            "editMessageReplyMarkup",
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "reply_markup": reply_markup,
+            },
+        )
 
     async def download_file(self, file_id: str, max_bytes: int) -> bytes | None:
         """Файл, присланный боту; None — больше max_bytes."""

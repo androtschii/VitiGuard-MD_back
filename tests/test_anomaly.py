@@ -93,6 +93,24 @@ def test_short_series_gives_nothing() -> None:
     assert detect_anomalies([], []) == []
 
 
+def test_scan_without_norm_breaks_the_chain() -> None:
+    # Просадка в конце июля, затем одинокий снимок через два месяца облаков и
+    # новая просадка: подряд эти просадки не идут, вторая — снова «подозрение»
+    regular = season({9: 0.2})
+    late = [
+        Observation(START + timedelta(days=days), 0.7 - (0.2 if days == 140 else 0))
+        for days in (140, 145, 150)
+    ]
+    lonely = Observation(START + timedelta(days=105), 0.7)
+
+    found = detect_anomalies([*regular[:10], lonely, *late], [])
+
+    assert [(a.acquired_at, a.level) for a in found] == [
+        (regular[9].acquired_at, "suspected"),
+        (late[0].acquired_at, "suspected"),
+    ]
+
+
 def test_lonely_scan_has_no_norm() -> None:
     # Снимки в 30 днях друг от друга: у каждого нет соседей по окну ±20 дней
     series = season({4: 0.3}, days=30, count=6)

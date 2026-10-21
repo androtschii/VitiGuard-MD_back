@@ -198,3 +198,42 @@ def test_alerts_are_private(api_client: TestClient, run_sql: RunSql) -> None:
     response = api_client.post(f"/api/v1/alerts/{alert_id}/read", headers=stranger)
     assert response.status_code == 404
     assert api_client.get("/api/v1/alerts").status_code == 401
+
+
+@pytest.mark.parametrize(("alert_level", "expected"), [(RiskLevel.HIGH, 1), (None, 0)])
+async def test_refresh_respects_owner_settings(
+    session: AsyncSession, alert_level: RiskLevel | None, expected: int
+) -> None:
+    from test_risk import FrozenForecast, add_vineyard
+
+    # 20 мая дождь — первичное заражение милдью, высокий риск сегодня
+    now = datetime(2026, 5, 20, 10, tzinfo=UTC)
+    vineyard = await add_vineyard(session)
+    owner = await session.get(User, vineyard.owner_id)
+    assert owner is not None
+    owner.alert_level = alert_level
+    await session.flush()
+
+    await risk_service.refresh_risks(session, FrozenForecast(now), vineyard, now)  # type: ignore[arg-type]
+
+    alerts = await session.scalars(select(Alert).where(Alert.day == date(2026, 5, 20)))
+    assert len(alerts.all()) == expected
+
+
+def test_notification_settings(api_client: TestClient) -> None:
+    headers = login(api_client)
+    url = "/api/v1/users/me/notifications"
+
+    # По умолчанию — только высокий риск
+    assert api_client.get(url, headers=headers).json() == {"alert_level": "high"}
+    assert api_client.put(
+        url, headers=headers, json={"alert_level": "medium"}
+    ).json() == {"alert_level": "medium"}
+    assert api_client.put(url, headers=headers, json={"alert_level": None}).json() == {
+        "alert_level": None
+    }
+    assert api_client.get(url, headers=headers).json() == {"alert_level": None}
+    # «Низкий» — это предупреждения каждый день, такого порога нет
+    bad = api_client.put(url, headers=headers, json={"alert_level": "low"})
+    assert bad.status_code == 422
+    assert api_client.get(url).status_code == 401

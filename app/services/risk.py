@@ -26,6 +26,7 @@ from app.services.agromodels import (
     RiskDay,
     season_risks,
 )
+from app.services.alerts import raise_alerts
 from app.services.weather import vineyard_point
 
 FORECAST_DAYS = 7
@@ -93,6 +94,8 @@ async def refresh_risks(
         for s in weather
     )
     await _save(session, vineyard, risks, today)
+    # Предупреждения о высоком риске на ближайшие дни (pr-080)
+    await raise_alerts(session, vineyard, today)
     await session.commit()
     return len(risks)
 

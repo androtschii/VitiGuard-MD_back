@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.routes import (
     ai,
+    alerts,
     auth,
     diagnoses,
     info,
@@ -26,4 +27,5 @@ api_router.include_router(risks.router)
 api_router.include_router(risks.today_router)
 api_router.include_router(weather.router)
 api_router.include_router(ai.router)
+api_router.include_router(alerts.router)
 api_router.include_router(diagnoses.router)

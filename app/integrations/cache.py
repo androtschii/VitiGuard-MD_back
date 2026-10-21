@@ -14,10 +14,20 @@ OSM_VERSION = "gis:osm:version"
 GIS_TTL_SECONDS = 24 * 3600
 
 
+def ndvi_tiles_version(owner_id: object) -> str:
+    """Версия тайлов NDVI владельца: растёт с новым снимком и с изменением
+    или удалением участка."""
+    return f"tiles:ndvi:{owner_id}:version"
+
+
 class Cache(Protocol):
     async def get_json(self, key: str) -> Any | None: ...
 
     async def set_json(self, key: str, value: Any, ttl: int) -> None: ...
+
+    async def get_bytes(self, key: str) -> bytes | None: ...
+
+    async def set_bytes(self, key: str, value: bytes, ttl: int) -> None: ...
 
     async def version(self, name: str) -> int: ...
 
@@ -42,18 +52,25 @@ class RedisCache:
             )
         )
 
-    async def get_json(self, key: str) -> Any | None:
+    async def get_bytes(self, key: str) -> bytes | None:
         try:
-            raw = await self.client.get(key)
+            raw: bytes | None = await self.client.get(key)
         except (RedisError, OSError):
             return None
+        return raw
+
+    async def set_bytes(self, key: str, value: bytes, ttl: int) -> None:
+        try:
+            await self.client.set(key, value, ex=ttl)
+        except (RedisError, OSError):
+            return
+
+    async def get_json(self, key: str) -> Any | None:
+        raw = await self.get_bytes(key)
         return None if raw is None else json.loads(raw)
 
     async def set_json(self, key: str, value: Any, ttl: int) -> None:
-        try:
-            await self.client.set(key, json.dumps(value), ex=ttl)
-        except (RedisError, OSError):
-            return
+        await self.set_bytes(key, json.dumps(value).encode(), ttl)
 
     async def version(self, name: str) -> int:
         try:

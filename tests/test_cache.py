@@ -51,6 +51,8 @@ async def test_unavailable_redis_does_not_break_requests() -> None:
     assert await cached(cache, "stats", compute) == {"answer": 42}
     assert await cache.version(OSM_VERSION) == 0
     await cache.bump(OSM_VERSION)
+    await cache.set_bytes("tile", b"png", 60)
+    assert await cache.get_bytes("tile") is None
 
 
 def test_cache_has_own_redis_database() -> None:
@@ -72,6 +74,11 @@ async def test_redis_cache_round_trip(redis_url: str) -> None:
         assert await cache.get_json("key") == {"features": [1, 2]}
         assert await cache.get_json("missing") is None
         assert 0 < await cache.client.ttl("key") <= 60
+        # Тайлы — байтами как есть, пустой тайл — пустой строкой, а не «нет ключа»
+        await cache.set_bytes("tile", b"\x89PNG", ttl=60)
+        await cache.set_bytes("empty", b"", ttl=60)
+        assert await cache.get_bytes("tile") == b"\x89PNG"
+        assert await cache.get_bytes("empty") == b""
         await cache.bump(OSM_VERSION)
         await cache.bump(OSM_VERSION)
         assert await cache.version(OSM_VERSION) == 2

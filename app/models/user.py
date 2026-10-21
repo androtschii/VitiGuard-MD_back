@@ -1,7 +1,7 @@
 import enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, Enum, String, text
+from sqlalchemy import BigInteger, CheckConstraint, Enum, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -45,6 +45,9 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     alert_level: Mapped[RiskLevel | None] = mapped_column(
         string_enum(RiskLevel, "alert_level"), server_default=RiskLevel.HIGH.value
     )
+    # Чат Telegram, привязанный к учётной записи по ссылке из профиля (pr-082):
+    # из него бот принимает фото на диагностику. Один чат — одна учётная запись
+    telegram_chat_id: Mapped[int | None] = mapped_column(BigInteger, unique=True)
 
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True

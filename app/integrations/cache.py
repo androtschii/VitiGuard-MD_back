@@ -29,6 +29,8 @@ class Cache(Protocol):
 
     async def set_bytes(self, key: str, value: bytes, ttl: int) -> None: ...
 
+    async def pop_json(self, key: str) -> Any | None: ...
+
     async def version(self, name: str) -> int: ...
 
     async def bump(self, name: str) -> None: ...
@@ -71,6 +73,19 @@ class RedisCache:
 
     async def set_json(self, key: str, value: Any, ttl: int) -> None:
         await self.set_bytes(key, json.dumps(value).encode(), ttl)
+
+    async def pop_json(self, key: str) -> Any | None:
+        """Прочитать и удалить одним действием: одноразовые коды не
+        срабатывают дважды, даже если два запроса пришли одновременно."""
+        try:
+            # GET и DEL в одной транзакции MULTI: GETDEL есть только с Redis 6.2
+            async with self.client.pipeline(transaction=True) as pipe:
+                pipe.get(key)
+                pipe.delete(key)
+                raw, _ = await pipe.execute()
+        except (RedisError, OSError):
+            return None
+        return None if raw is None else json.loads(raw)
 
     async def version(self, name: str) -> int:
         try:

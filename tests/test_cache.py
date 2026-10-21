@@ -26,6 +26,9 @@ class DownRedis:
     async def incr(self, _: str) -> None:
         raise OSError("network is unreachable")
 
+    def pipeline(self, transaction: bool) -> None:
+        raise RedisConnectionError("refused")
+
 
 async def test_cached_computes_once_per_version() -> None:
     cache = MemoryCache()
@@ -53,6 +56,7 @@ async def test_unavailable_redis_does_not_break_requests() -> None:
     await cache.bump(OSM_VERSION)
     await cache.set_bytes("tile", b"png", 60)
     assert await cache.get_bytes("tile") is None
+    assert await cache.pop_json("code") is None
 
 
 def test_cache_has_own_redis_database() -> None:
@@ -79,6 +83,10 @@ async def test_redis_cache_round_trip(redis_url: str) -> None:
         await cache.set_bytes("empty", b"", ttl=60)
         assert await cache.get_bytes("tile") == b"\x89PNG"
         assert await cache.get_bytes("empty") == b""
+        # Одноразовое значение: второй раз его уже нет
+        await cache.set_json("code", "user-1", ttl=60)
+        assert await cache.pop_json("code") == "user-1"
+        assert await cache.pop_json("code") is None
         await cache.bump(OSM_VERSION)
         await cache.bump(OSM_VERSION)
         assert await cache.version(OSM_VERSION) == 2

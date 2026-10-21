@@ -371,3 +371,73 @@ async def test_client_buttons() -> None:
             {"chat_id": 42, "message_id": 7, "reply_markup": keyboard},
         ),
     ]
+
+
+async def test_client_long_polling() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        method = request.url.path.rsplit("/", 1)[1]
+        calls.append((method, json.loads(request.content)))
+        if method == "getUpdates":
+            return httpx.Response(200, json={"ok": True, "result": [{"update_id": 5}]})
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    client = telegram_with(handler)
+    await client.delete_webhook()
+
+    assert await client.get_updates(5, 30) == [{"update_id": 5}]
+    assert calls[1] == (
+        "getUpdates",
+        {"offset": 5, "timeout": 30, "allowed_updates": ["message", "callback_query"]},
+    )
+    assert calls[0][0] == "deleteWebhook"
+    broken = telegram_with(lambda _: httpx.Response(200, json={"ok": False}))
+    with pytest.raises(ExternalServiceError):
+        await broken.get_updates(0, 30)
+
+
+class PollingTelegram(FakeTelegram):
+    """Telegram для опроса: сначала сбой сети, затем пачка обновлений."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.offsets: list[int] = []
+        self.batches: list[Any] = [
+            ExternalServiceError("Telegram недоступен"),
+            [
+                {"update_id": 10, "message": "не сообщение"},
+                {"update_id": 11, "message": {"chat": {"id": 42}, "text": "/start"}},
+            ],
+        ]
+
+    async def get_updates(self, offset: int, wait: int) -> list[dict[str, Any]]:
+        self.offsets.append(offset)
+        batch = self.batches.pop(0) if self.batches else []
+        if isinstance(batch, Exception):
+            raise batch
+        return batch
+
+
+@pytest.mark.integration
+def test_polling_feeds_updates_to_the_bot(
+    migrated_database_url: str, redis_url: str
+) -> None:
+    from app.cli.telegram_polling import poll
+
+    telegram = PollingTelegram()
+    settings = Settings(
+        _env_file=None,
+        database_url=migrated_database_url,  # type: ignore[arg-type]
+        cache_url=f"{redis_url}/2",  # type: ignore[arg-type]
+    )
+
+    handled = asyncio.run(
+        poll(settings, telegram, lambda name, args: None, rounds=3, pause=0)  # type: ignore[arg-type]
+    )
+
+    # Непонятное обновление пропущено, но номер учтён: Telegram его не повторит
+    assert handled == 1
+    assert telegram.offsets == [0, 0, 12]
+    assert telegram.sent == [(42, telegram.sent[0][1])]
+    assert telegram.sent[0][1].startswith("Пришлите фото листа")

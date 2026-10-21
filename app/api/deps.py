@@ -1,5 +1,5 @@
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, Query, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -12,6 +12,7 @@ from app.integrations.cache import Cache
 from app.integrations.copernicus import CopernicusClient
 from app.integrations.object_storage import ObjectStorage, Storage
 from app.integrations.open_meteo import OpenMeteoClient
+from app.integrations.telegram import TelegramClient
 from app.models.user import User, UserRole
 from app.repositories.user import UserRepository
 from app.schemas.pagination import PageParams
@@ -148,3 +149,21 @@ def get_copernicus(request: Request, settings: SettingsDep) -> CopernicusClient:
 
 
 CopernicusDep = Annotated[CopernicusClient, Depends(get_copernicus)]
+
+
+def get_telegram(request: Request, settings: SettingsDep) -> TelegramClient | None:
+    """Клиент Telegram-бота; None — бот не настроен (нет токена)."""
+    if settings.telegram_bot_token is None:
+        return None
+    return TelegramClient(request.app.state.http_client, settings)
+
+
+TelegramDep = Annotated[TelegramClient | None, Depends(get_telegram)]
+
+
+def get_task_queue() -> Callable[[str, list[Any]], object]:
+    """Постановка задачи Celery по имени. В тестах подменяется списком."""
+    return lambda name, args: celery_app.send_task(name, args=args)
+
+
+TaskQueueDep = Annotated[Callable[[str, list[Any]], object], Depends(get_task_queue)]

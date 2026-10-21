@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     overpass_url: str = "https://overpass-api.de/api/interpreter"
     # Выгрузка виноградников всей страны занимает десятки секунд
     overpass_timeout: int = 180
+    # Telegram-бот (pr-082, pr-083): без токена бот выключен, вебхук отвечает 404.
+    # Секрет вебхука Telegram присылает в заголовке — так чужие POST отсекаются
+    telegram_bot_token: SecretStr | None = None
+    telegram_bot_username: str = "VitiGuardMDBot"
+    telegram_webhook_secret: SecretStr | None = None
+    telegram_api_url: str = "https://api.telegram.org"
     # Снимки с облачностью сцены выше порога (в процентах) не берутся
     max_scene_cloud_cover: float = Field(default=10, ge=0, le=100)
     # Для расчёта индексов отсев по облачности сцены мягче: облака над самим

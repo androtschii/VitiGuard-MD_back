@@ -10,6 +10,7 @@ TASK_MODULES = [
     "app.tasks.osm",
     "app.tasks.risk",
     "app.tasks.satellite",
+    "app.tasks.telegram",
     "app.tasks.system",
 ]
 

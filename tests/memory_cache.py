@@ -22,6 +22,10 @@ class MemoryCache:
     async def set_json(self, key: str, value: Any, ttl: int) -> None:
         self.values[key] = json.dumps(value).encode()
 
+    async def pop_json(self, key: str) -> Any | None:
+        raw = self.values.pop(key, None)
+        return None if raw is None else json.loads(raw)
+
     async def version(self, name: str) -> int:
         return self.versions.get(name, 0)
 

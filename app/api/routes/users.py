@@ -1,6 +1,7 @@
 from fastapi import APIRouter, status
 
-from app.api.deps import CurrentUserDep, SessionDep
+from app.api.deps import CacheDep, CurrentUserDep, SessionDep, SettingsDep
+from app.core.errors import ServiceUnavailableError
 from app.models.enums import RiskLevel
 from app.models.user import User
 from app.repositories.user import UserRepository
@@ -8,9 +9,11 @@ from app.schemas.errors import ErrorResponse
 from app.schemas.user import (
     NotificationSettings,
     NotificationSettingsRead,
+    TelegramLinkRead,
     UserRead,
     UserUpdate,
 )
+from app.services.telegram_bot import LINK_TTL_SECONDS, create_link_code
 
 router = APIRouter(
     prefix="/users",
@@ -53,3 +56,30 @@ async def update_notifications(
     await session.commit()
     await session.refresh(user)
     return to_settings(user)
+
+
+@router.post(
+    "/me/telegram",
+    summary="Ссылка для привязки Telegram-бота",
+    responses={status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse}},
+)
+async def create_telegram_link(
+    user: CurrentUserDep, settings: SettingsDep, cache: CacheDep
+) -> TelegramLinkRead:
+    if settings.telegram_bot_token is None:
+        raise ServiceUnavailableError("Telegram-бот не настроен")
+    code = await create_link_code(cache, user.id)
+    return TelegramLinkRead(
+        url=f"https://t.me/{settings.telegram_bot_username}?start={code}",
+        expires_in=LINK_TTL_SECONDS,
+    )
+
+
+@router.delete(
+    "/me/telegram",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Отвязать Telegram-бота",
+)
+async def unlink_telegram(user: CurrentUserDep, session: SessionDep) -> None:
+    user.telegram_chat_id = None
+    await session.commit()

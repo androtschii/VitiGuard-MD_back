@@ -30,3 +30,14 @@ class RiskLevel(enum.StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+
+
+class Fungicide(enum.StrEnum):
+    """Тип препарата по действию — от него зависит, сколько держится защита."""
+
+    # Контактный (медь, манкоцеб): защищает до дождя, смывается ливнем
+    CONTACT = "contact"
+    # Системный: проникает в ткани, лечит в первые дни после заражения
+    SYSTEMIC = "systemic"
+    # Сера — против оидиума; в жару обжигает листья
+    SULFUR = "sulfur"

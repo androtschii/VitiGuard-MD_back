@@ -28,3 +28,20 @@ class TodayRiskRead(ResponseSchema):
     day: date
     downy: RiskLevel
     powdery: RiskLevel
+
+
+class OutlookDayRead(ResponseSchema):
+    """Вероятность вспышки в день; null — день вне сезонного окна моделей."""
+
+    day: date
+    downy: float | None = Field(ge=0, le=1)
+    powdery: float | None = Field(ge=0, le=1)
+
+
+class RiskOutlookRead(ResponseSchema):
+    """Вероятность вспышки милдью и оидиума на 7 дней по ансамблевому прогнозу."""
+
+    members: int = Field(ge=0, description="Членов ансамбля в расчёте")
+    days: list[OutlookDayRead]
+    downy_week: float | None = Field(ge=0, le=1)
+    powdery_week: float | None = Field(ge=0, le=1)

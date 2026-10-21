@@ -1,4 +1,5 @@
-"""Клиент Open-Meteo: текущая погода и почасовой архив по координатам.
+"""Клиент Open-Meteo: текущая погода, почасовой архив, прогноз и ансамблевый
+прогноз по координатам.
 
 Сервис бесплатный и без ключа. Все запросы — в UTC, чтобы время в базе не
 зависело от часового пояса и перехода на летнее время."""
@@ -125,6 +126,26 @@ class OpenMeteoClient:
         )
         return _hourly_samples(data)
 
+    async def ensemble(
+        self, latitude: float, longitude: float, past_days: int, forecast_days: int
+    ) -> list[list[WeatherSample]]:
+        """Ансамблевый прогноз: почасовой ряд на каждого члена ансамбля —
+        контрольный прогноз и прогнозы с возмущёнными начальными условиями.
+        Разброс членов показывает, насколько неопределённа погода впереди."""
+        data = await self._get(
+            self._settings.open_meteo_ensemble_url,
+            {
+                "latitude": latitude,
+                "longitude": longitude,
+                "models": self._settings.open_meteo_ensemble_model,
+                "past_days": past_days,
+                "forecast_days": forecast_days,
+                "hourly": VARIABLES,
+                "timezone": "UTC",
+            },
+        )
+        return _ensemble_members(data)
+
     async def _get(self, url: str, params: dict[str, Any]) -> Any:
         """Запрос к Open-Meteo. Сетевой сбой, таймаут, ошибка сервиса или
         ответ не в JSON — ExternalServiceError (ответ API 502)."""
@@ -139,6 +160,34 @@ class OpenMeteoClient:
 def _as_utc(moment: datetime) -> datetime:
     # С timezone=UTC сервис отдаёт время без пояса; хранить его надо явно в UTC
     return moment.replace(tzinfo=UTC) if moment.tzinfo is None else moment
+
+
+def _ensemble_members(data: Any) -> list[list[WeatherSample]]:
+    """Члены ансамбля приходят столбцами одного ответа: temperature_2m —
+    контрольный прогноз, temperature_2m_member01 и дальше — остальные."""
+    hourly = data.get("hourly") if isinstance(data, dict) else None
+    if not isinstance(hourly, dict):
+        raise ExternalServiceError(UNAVAILABLE)
+    suffixes = sorted(
+        key.removeprefix("temperature_2m")
+        for key in hourly
+        if key.startswith("temperature_2m")
+    )
+    if not suffixes:
+        raise ExternalServiceError(UNAVAILABLE)
+    return [
+        _hourly_samples(
+            {
+                "hourly": {
+                    "time": hourly.get("time"),
+                    "temperature_2m": hourly.get(f"temperature_2m{suffix}"),
+                    "relative_humidity_2m": hourly.get(f"relative_humidity_2m{suffix}"),
+                    "precipitation": hourly.get(f"precipitation{suffix}"),
+                }
+            }
+        )
+        for suffix in suffixes
+    ]
 
 
 def _hourly_samples(data: Any) -> list[WeatherSample]:

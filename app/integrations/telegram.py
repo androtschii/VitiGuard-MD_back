@@ -59,6 +59,26 @@ class TelegramClient:
             },
         )
 
+    async def delete_webhook(self) -> None:
+        await self._call("deleteWebhook", {})
+
+    async def get_updates(self, offset: int, wait: int) -> list[dict[str, Any]]:
+        """Обновления с номера offset; Telegram держит запрос до wait секунд,
+        пока не появится новое (long polling)."""
+        data = await self._call(
+            "getUpdates",
+            {
+                "offset": offset,
+                "timeout": wait,
+                "allowed_updates": ["message", "callback_query"],
+            },
+            wait=wait + 10,
+        )
+        result = data.get("result") if isinstance(data, dict) else None
+        if not isinstance(result, list):
+            raise ExternalServiceError(UNAVAILABLE)
+        return result
+
     async def download_file(self, file_id: str, max_bytes: int) -> bytes | None:
         """Файл, присланный боту; None — больше max_bytes."""
         data = await self._call("getFile", {"file_id": file_id})
@@ -78,10 +98,14 @@ class TelegramClient:
         content = response.content
         return None if len(content) > max_bytes else content
 
-    async def _call(self, method: str, payload: dict[str, Any]) -> Any:
+    async def _call(
+        self, method: str, payload: dict[str, Any], wait: float | None = None
+    ) -> Any:
         try:
             response = await self._http.post(
-                f"{self._api}/bot{self._token}/{method}", json=payload
+                f"{self._api}/bot{self._token}/{method}",
+                json=payload,
+                timeout=httpx.USE_CLIENT_DEFAULT if wait is None else wait,
             )
             response.raise_for_status()
             return response.json()

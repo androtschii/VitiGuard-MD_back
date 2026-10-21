@@ -2,7 +2,7 @@ import uuid
 from typing import TYPE_CHECKING
 
 from geoalchemy2 import Geometry, WKBElement
-from sqlalchemy import CheckConstraint, ForeignKey, SmallInteger, String
+from sqlalchemy import CheckConstraint, ForeignKey, SmallInteger, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -36,6 +36,9 @@ class Vineyard(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("varieties.id", ondelete="SET NULL"), index=True
     )
     planting_year: Mapped[int | None] = mapped_column(SmallInteger)
+    # Присылать ли предупреждения по участку в Telegram (pr-083). Включено
+    # сразу: подписка — на все участки, лишние отключаются в боте
+    telegram_alerts: Mapped[bool] = mapped_column(server_default=text("true"))
 
     owner: Mapped["User"] = relationship(back_populates="vineyards")
     variety: Mapped["Variety | None"] = relationship()

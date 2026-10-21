@@ -75,7 +75,7 @@ def test_refresh_all_survives_one_failure(
     )
     monkeypatch.setattr(risk_tasks, "get_settings", lambda: settings)
 
-    assert risk_tasks.refresh_all() == {"refreshed": 1, "failed": 1}
+    assert risk_tasks.refresh_all() == {"refreshed": 1, "failed": 1, "notified": 0}
     assert sorted(seen) == ["Криково", "Сбой погоды"]
 
 

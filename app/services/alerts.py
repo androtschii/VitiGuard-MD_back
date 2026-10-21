@@ -70,6 +70,7 @@ async def raise_alerts(
             set_={
                 "level": statement.excluded.level,
                 "read_at": None,
+                "notified_at": None,
                 "updated_at": func.now(),
             },
             where=_rank(statement.excluded.level) > _rank(Alert.level),

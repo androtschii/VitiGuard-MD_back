@@ -348,3 +348,26 @@ def test_link_of_blocked_account_does_not_work(
     send(client, {"text": f"/start {url.rsplit('=', 1)[1]}"})
 
     assert "устарела" in telegram.sent[-1][1]
+
+
+async def test_client_buttons() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.url.path.rsplit("/", 1)[1], json.loads(request.content)))
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    client = telegram_with(handler)
+    keyboard = {"inline_keyboard": [[{"text": "🔔", "callback_data": "alerts:1"}]]}
+    await client.send_message(42, "Участки", keyboard)
+    await client.answer_callback("q-1", "Готово")
+    await client.edit_reply_markup(42, 7, keyboard)
+
+    assert calls == [
+        ("sendMessage", {"chat_id": 42, "text": "Участки", "reply_markup": keyboard}),
+        ("answerCallbackQuery", {"callback_query_id": "q-1", "text": "Готово"}),
+        (
+            "editMessageReplyMarkup",
+            {"chat_id": 42, "message_id": 7, "reply_markup": keyboard},
+        ),
+    ]

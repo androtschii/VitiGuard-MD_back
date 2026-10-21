@@ -4,8 +4,9 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, UploadFile, status
 
-from app.api.deps import CurrentUserDep, PageParamsDep, SessionDep
+from app.api.deps import CacheDep, CurrentUserDep, PageParamsDep, SessionDep
 from app.core.errors import BadRequestError
+from app.integrations.cache import ndvi_tiles_version
 from app.models.satellite import IndexType
 from app.repositories.vineyard import VineyardRepository, VineyardView
 from app.schemas.errors import ErrorResponse
@@ -242,6 +243,7 @@ async def update_vineyard(
     data: VineyardUpdate,
     user: CurrentUserDep,
     session: SessionDep,
+    cache: CacheDep,
 ) -> VineyardRead:
     repository = VineyardRepository(session)
     vineyard = (await repository.get_for_owner(user.id, vineyard_id)).vineyard
@@ -253,6 +255,9 @@ async def update_vineyard(
     await ensure_variety_exists(session, values.get("variety_id"))
     await repository.update_with_geojson(vineyard, geometry, **values)
     await session.commit()
+    if geometry is not None:
+        # Участок переехал — тайлы его картограмм на прежнем месте устарели
+        await cache.bump(ndvi_tiles_version(user.id))
     return to_read(await repository.view(vineyard))
 
 
@@ -263,13 +268,14 @@ async def update_vineyard(
     responses={status.HTTP_404_NOT_FOUND: {"model": ErrorResponse}},
 )
 async def delete_vineyard(
-    vineyard_id: uuid.UUID, user: CurrentUserDep, session: SessionDep
+    vineyard_id: uuid.UUID, user: CurrentUserDep, session: SessionDep, cache: CacheDep
 ) -> None:
     repository = VineyardRepository(session)
     vineyard = (await repository.get_for_owner(user.id, vineyard_id)).vineyard
     # Снимки, погода и риски участка удаляются каскадом, фото листьев остаются
     await repository.delete(vineyard)
     await session.commit()
+    await cache.bump(ndvi_tiles_version(user.id))
 
 
 @router.get(

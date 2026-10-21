@@ -4,10 +4,13 @@ from datetime import datetime
 
 import httpx2 as httpx
 from celery import shared_task
+from sqlalchemy import select
 
 from app.core.config import Settings, get_settings
 from app.db.session import create_engine, create_session_factory
+from app.integrations.cache import RedisCache, ndvi_tiles_version
 from app.integrations.earth_search import EarthSearchClient
+from app.models.vineyard import Vineyard
 from app.services.vegetation_history import process_vineyard
 
 SOFT_TIME_LIMIT = 30 * 60
@@ -30,8 +33,18 @@ async def run_vegetation(
                 datetime.fromisoformat(end),
                 settings.vegetation_max_scene_cloud_cover,
             )
+            owner_id = await session.scalar(
+                select(Vineyard.owner_id).where(Vineyard.id == uuid.UUID(vineyard_id))
+            )
     finally:
         await engine.dispose()
+    if stats.processed:
+        # Новые картограммы — новая версия тайлов NDVI владельца
+        cache = RedisCache.from_settings(settings)
+        try:
+            await cache.bump(ndvi_tiles_version(owner_id))
+        finally:
+            await cache.close()
     return vars(stats)
 
 

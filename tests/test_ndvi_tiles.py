@@ -1,16 +1,25 @@
+import asyncio
 import io
 import math
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from memory_cache import MemoryCache
 from PIL import Image
 from raster_scene import PARCEL, make_scene
 
+from app.integrations.cache import ndvi_tiles_version
 from app.integrations.earth_search import EarthScene
-from app.services.ndvi_tiles import NdviMapImage, render_tile, tile_bounds
+from app.services.ndvi_tiles import (
+    NdviMapImage,
+    latest_maps,
+    render_tile,
+    tile_bounds,
+)
 
 # Участок у Крикова
 LON, LAT = 28.8606, 47.1404
@@ -119,6 +128,13 @@ def login(client: TestClient, email: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+class TaskCache(MemoryCache):
+    """Кэш задачи обработки снимков: тот же, что у API в тесте."""
+
+    async def close(self) -> None:
+        return None
+
+
 @pytest.fixture
 def processed(
     api_client: TestClient,
@@ -128,9 +144,13 @@ def processed(
 ) -> dict[str, str]:
     """Участок с обработанным синтетическим снимком 29 августа 2026."""
     from app.core.config import Settings
+    from app.integrations.cache import RedisCache
     from app.integrations.earth_search import EarthSearchClient
     from app.tasks import satellite
 
+    shared = TaskCache()
+    api_client.app.state.cache = shared  # type: ignore[attr-defined]
+    monkeypatch.setattr(RedisCache, "from_settings", lambda _: shared)
     headers = login(api_client, "grower@example.md")
     vineyard = api_client.post(
         "/api/v1/vineyards",
@@ -152,7 +172,7 @@ def processed(
     satellite.process_vineyard_task(
         vineyard, "2026-03-01T00:00:00+00:00", "2026-10-16T23:59:59+00:00"
     )
-    return headers
+    return {**headers, "x-vineyard": vineyard}
 
 
 def tile_url(z: int = 16, **params: str) -> str:
@@ -175,6 +195,43 @@ def test_tile_shows_latest_map_of_own_vineyards(
     # NDVI 0,71 — зелёная часть палитры
     red, green, _, _ = pixels[pixels[..., 3] > 0][0]
     assert green > red
+
+
+@pytest.mark.integration
+def test_tiles_are_cached_until_layer_changes(
+    api_client: TestClient,
+    processed: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.api.routes import tiles
+
+    cache: MemoryCache = api_client.app.state.cache  # type: ignore[attr-defined]
+    owner = api_client.get("/api/v1/users/me", headers=processed).json()["id"]
+    # Обработка снимка уже подняла версию слоя владельца
+    assert asyncio.run(cache.version(ndvi_tiles_version(owner))) == 1
+    queries: list[int] = []
+    reading = latest_maps
+
+    async def counted(*args: Any) -> Any:
+        queries.append(1)
+        return await reading(*args)
+
+    monkeypatch.setattr(tiles, "latest_maps", counted)
+
+    first = api_client.get(tile_url(), headers=processed)
+    second = api_client.get(tile_url(), headers=processed)
+    api_client.get(tile_url(day="2026-08-01"), headers=processed)
+    empty = api_client.get(tile_url(day="2026-08-01"), headers=processed)
+
+    assert second.content == first.content
+    assert empty.status_code == 204
+    # По одному запросу к базе на тайл: повторы — из кэша, и пустые тоже
+    assert len(queries) == 2
+
+    # Удалённый участок — новая версия, тайл собирается заново и уже пуст
+    api_client.delete(f"/api/v1/vineyards/{processed['x-vineyard']}", headers=processed)
+    assert api_client.get(tile_url(), headers=processed).status_code == 204
+    assert len(queries) == 3
 
 
 @pytest.mark.integration

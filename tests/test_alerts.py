@@ -237,3 +237,35 @@ def test_notification_settings(api_client: TestClient) -> None:
     bad = api_client.put(url, headers=headers, json={"alert_level": "low"})
     assert bad.status_code == 422
     assert api_client.get(url).status_code == 401
+
+
+async def test_forecast_rain_warns_in_advance(session: AsyncSession) -> None:
+    from test_risk import FrozenForecast, add_vineyard, sample
+
+    class RainAhead(FrozenForecast):
+        """Прогноз: 12 мм завтра и через четыре дня, остальное — сухо."""
+
+        async def forecast(
+            self, _lat: float, _lon: float, past_days: int, forecast_days: int
+        ) -> list[Any]:
+            hour = self.now.replace(minute=0, second=0, microsecond=0)
+            wet = {date(2026, 6, 11), date(2026, 6, 14)}
+            return [
+                sample(moment, 20.0, 0.5 if moment.date() in wet else 0.0)
+                for moment in (
+                    hour + timedelta(hours=h)
+                    for h in range(-24 * past_days, 24 * forecast_days)
+                )
+            ]
+
+    now = datetime(2026, 6, 10, 9, tzinfo=UTC)
+    vineyard = await add_vineyard(session)
+
+    await risk_service.refresh_risks(session, RainAhead(now), vineyard, now)  # type: ignore[arg-type]
+
+    # Заражение по прогнозу завтра и послезавтра (осадки за 48 ч); 14-е — за
+    # горизонтом в два дня: прогноз на такой срок ненадёжен
+    assert await alerts_of(session) == [
+        (Disease.DOWNY_MILDEW, date(2026, 6, 11), RiskLevel.HIGH),
+        (Disease.DOWNY_MILDEW, date(2026, 6, 12), RiskLevel.HIGH),
+    ]

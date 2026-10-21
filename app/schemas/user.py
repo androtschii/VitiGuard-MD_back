@@ -1,7 +1,9 @@
+from typing import Literal
+
 from pydantic import Field
 
 from app.models.user import UserRole
-from app.schemas.base import EntityResponse, RequestSchema
+from app.schemas.base import EntityResponse, RequestSchema, ResponseSchema
 
 
 class UserRead(EntityResponse):
@@ -12,6 +14,17 @@ class UserRead(EntityResponse):
     full_name: str | None
     role: UserRole
     is_active: bool
+
+
+class NotificationSettings(RequestSchema):
+    """Настройки уведомлений (pr-084): с какого уровня риска присылать
+    предупреждения; null — не присылать."""
+
+    alert_level: Literal["medium", "high"] | None
+
+
+class NotificationSettingsRead(ResponseSchema):
+    alert_level: Literal["medium", "high"] | None
 
 
 class UserUpdate(RequestSchema):

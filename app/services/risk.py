@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.open_meteo import OpenMeteoClient, WeatherSample
 from app.models.enums import Disease, RiskLevel
+from app.models.user import User
 from app.models.vineyard import Vineyard
 from app.models.weather import DiseaseRisk
 from app.repositories.weather import WeatherRepository
@@ -94,8 +95,13 @@ async def refresh_risks(
         for s in weather
     )
     await _save(session, vineyard, risks, today)
-    # Предупреждения о высоком риске на ближайшие дни (pr-080)
-    await raise_alerts(session, vineyard, today)
+    # Предупреждения о риске на ближайшие дни (pr-080) — с уровня, который
+    # выбрал владелец (pr-084); выключены — не создаются
+    alert_level = await session.scalar(
+        select(User.alert_level).where(User.id == vineyard.owner_id)
+    )
+    if alert_level is not None:
+        await raise_alerts(session, vineyard, today, alert_level)
     await session.commit()
     return len(risks)
 

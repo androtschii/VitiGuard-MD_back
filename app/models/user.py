@@ -5,6 +5,7 @@ from sqlalchemy import CheckConstraint, Enum, String, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from app.models.enums import RiskLevel, string_enum
 
 if TYPE_CHECKING:
     from app.models.auth import RefreshToken
@@ -39,6 +40,11 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=UserRole.USER.value,
     )
     is_active: Mapped[bool] = mapped_column(server_default=text("true"))
+    # С какого уровня риска присылать предупреждения (pr-084); None — не
+    # присылать. По умолчанию — только о высоком риске
+    alert_level: Mapped[RiskLevel | None] = mapped_column(
+        string_enum(RiskLevel, "alert_level"), server_default=RiskLevel.HIGH.value
+    )
 
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True

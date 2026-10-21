@@ -1,3 +1,4 @@
+from app.models.alert import Alert
 from app.models.auth import PasswordResetToken, RefreshToken
 from app.models.diagnosis import DiseaseResult, LeafImage
 from app.models.enums import Disease, ProcessingStatus, RiskLevel
@@ -10,6 +11,7 @@ from app.models.vineyard import Vineyard
 from app.models.weather import DiseaseRisk, WeatherData
 
 __all__ = [
+    "Alert",
     "BerryColor",
     "Disease",
     "DiseaseResult",

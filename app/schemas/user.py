@@ -4,6 +4,7 @@ from pydantic import Field, computed_field
 
 from app.models.user import UserRole
 from app.schemas.base import EntityResponse, RequestSchema, ResponseSchema
+from app.schemas.pagination import PageParams
 
 
 class UserRead(EntityResponse):
@@ -46,3 +47,16 @@ class TelegramLinkRead(ResponseSchema):
 
     url: str = Field(examples=["https://t.me/VitiGuardMDBot?start=Zk3q9..."])
     expires_in: int = Field(description="Сколько секунд ссылка действует")
+
+
+class AdminUserUpdate(RequestSchema):
+    """Что администратор меняет у пользователя: роль и доступ."""
+
+    role: UserRole | None = None
+    is_active: bool | None = None
+
+
+class UserSearchParams(PageParams):
+    """Страница списка пользователей и поиск по email и имени: ?q=ion&page=2."""
+
+    q: str | None = Field(default=None, max_length=100)

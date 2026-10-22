@@ -82,7 +82,7 @@ async def login(
         # Хэш сделан со старыми параметрами Argon2: заменяем на актуальный
         await users.update(user, hashed_password=new_hash)
 
-    auth_session = await _issue_tokens(session, user, settings)
+    auth_session = await issue_tokens(session, user, settings)
     await session.commit()
     return auth_session
 
@@ -116,7 +116,7 @@ async def refresh_session(
         raise UnauthorizedError(INVALID_SESSION)
 
     await tokens.revoke(stored, now)
-    auth_session = await _issue_tokens(session, user, settings)
+    auth_session = await issue_tokens(session, user, settings)
     await session.commit()
     return auth_session
 
@@ -133,7 +133,7 @@ async def logout(session: AsyncSession, refresh_token: str | None) -> None:
         await session.commit()
 
 
-async def _issue_tokens(
+async def issue_tokens(
     session: AsyncSession, user: User, settings: Settings
 ) -> AuthSession:
     access = create_access_token(user.id, user.role, settings)

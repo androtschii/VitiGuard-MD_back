@@ -10,6 +10,7 @@ from app.schemas.auth import (
     PasswordResetConfirm,
     PasswordResetRequest,
     RegisterRequest,
+    TelegramLoginRequest,
     TokenResponse,
 )
 from app.schemas.errors import ErrorResponse
@@ -22,6 +23,7 @@ from app.services.auth import (
     register_user,
     request_password_reset,
 )
+from app.services.telegram_auth import telegram_login
 
 REFRESH_COOKIE = "refresh_token"
 
@@ -90,6 +92,25 @@ async def log_in(
     settings: SettingsDep,
 ) -> TokenResponse:
     tokens = await login(session, data, settings)
+    set_refresh_cookie(response, tokens.refresh, settings)
+    return TokenResponse(access_token=tokens.access.token)
+
+
+@router.post(
+    "/telegram",
+    summary="Вход в мини-приложение Telegram",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+    },
+)
+async def log_in_with_telegram(
+    data: TelegramLoginRequest,
+    response: Response,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> TokenResponse:
+    tokens = await telegram_login(session, data.init_data, settings)
     set_refresh_cookie(response, tokens.refresh, settings)
     return TokenResponse(access_token=tokens.access.token)
 

@@ -77,3 +77,9 @@ class PasswordResetRequest(RequestSchema):
 class PasswordResetConfirm(RequestSchema):
     token: str = Field(min_length=1, max_length=200)
     new_password: Password
+
+
+class TelegramLoginRequest(RequestSchema):
+    """Данные запуска мини-приложения Telegram (`Telegram.WebApp.initData`)."""
+
+    init_data: str = Field(min_length=1, max_length=4096)

@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     telegram_bot_username: str = "VitiGuardMDBot"
     telegram_webhook_secret: SecretStr | None = None
     telegram_api_url: str = "https://api.telegram.org"
+    # Публичный HTTPS-адрес веб-клиента для кнопок бота: мини-приложение и
+    # ссылка для телефона. Telegram принимает в кнопках только https, а
+    # 127.0.0.1 с телефона недоступен — без адреса бот кнопок не показывает
+    telegram_webapp_url: str | None = None
     # Снимки с облачностью сцены выше порога (в процентах) не берутся
     max_scene_cloud_cover: float = Field(default=10, ge=0, le=100)
     # Для расчёта индексов отсев по облачности сцены мягче: облака над самим

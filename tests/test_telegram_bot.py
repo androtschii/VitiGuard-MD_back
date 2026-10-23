@@ -111,13 +111,18 @@ def test_task_is_registered_for_worker() -> None:
 class FakeTelegram:
     def __init__(self, data: bytes | None = None, fail: bool = False) -> None:
         self.sent: list[tuple[int, str]] = []
+        # Кнопки под каждым отправленным сообщением (None — без кнопок)
+        self.markups: list[dict[str, Any] | None] = []
         self.data = data
         self.fail = fail
 
-    async def send_message(self, chat_id: int, text: str) -> None:
+    async def send_message(
+        self, chat_id: int, text: str, reply_markup: dict[str, Any] | None = None
+    ) -> None:
         if self.fail:
             raise ExternalServiceError("Telegram недоступен")
         self.sent.append((chat_id, text))
+        self.markups.append(reply_markup)
 
     async def download_file(self, file_id: str, max_bytes: int) -> bytes | None:
         return self.data
@@ -276,7 +281,9 @@ def test_unlinked_chat_is_told_how_to_link(bot: dict[str, Any]) -> None:
 
     assert queued == []
     assert "не привязан" in telegram.sent[0][1]
-    assert telegram.sent[1][1].startswith("Пришлите фото листа")
+    # /start без кода — приветствие и как привязать чат
+    assert telegram.sent[1][1].startswith("Здравствуйте! Это бот VitiGuard MD")
+    assert "не привязан" in telegram.sent[1][1]
 
 
 @pytest.mark.integration
@@ -440,4 +447,105 @@ def test_polling_feeds_updates_to_the_bot(
     assert handled == 1
     assert telegram.offsets == [0, 0, 12]
     assert telegram.sent == [(42, telegram.sent[0][1])]
-    assert telegram.sent[0][1].startswith("Пришлите фото листа")
+    assert telegram.sent[0][1].startswith("Здравствуйте! Это бот VitiGuard MD")
+
+
+APP = "https://vitiguard.example.md/"
+
+
+def with_app(bot: dict[str, Any], url: str | None) -> None:
+    app: Any = bot["client"].app
+    app.state.settings = app.state.settings.model_copy(
+        update={"telegram_webapp_url": url}
+    )
+
+
+@pytest.mark.integration
+def test_start_offers_app_buttons(bot: dict[str, Any]) -> None:
+    client, telegram = bot["client"], bot["telegram"]
+    with_app(bot, APP)
+    headers = login(client)
+    url = client.post("/api/v1/users/me/telegram", headers=headers).json()["url"]
+    send(client, {"text": f"/start {url.rsplit('=', 1)[1]}"})
+
+    send(client, {"text": "/start"})
+
+    assert telegram.sent[-1][1].startswith("Здравствуйте!")
+    # Чат привязан: без напоминания о привязке
+    assert "не привязан" not in telegram.sent[-1][1]
+    buttons = [row[0] for row in telegram.markups[-1]["inline_keyboard"]]
+    assert buttons == [
+        {
+            "text": "📷 Проверить лист в приложении",
+            "web_app": {"url": "https://vitiguard.example.md/diagnosis/quick"},
+        },
+        {
+            "text": "🌐 Открыть в браузере телефона",
+            "url": "https://vitiguard.example.md/",
+        },
+    ]
+    # Кнопки и после привязки по ссылке
+    assert telegram.markups[0] is not None
+
+
+@pytest.mark.integration
+def test_app_photo_and_help_commands(bot: dict[str, Any]) -> None:
+    client, telegram, queued = bot["client"], bot["telegram"], bot["queued"]
+    with_app(bot, APP)
+
+    # Подсказки работают и без привязанного чата
+    send(client, {"text": "/app"})
+    send(client, {"text": "/photo"})
+    send(client, {"text": "/help"})
+
+    assert telegram.sent[0][1].startswith("Откройте VitiGuard MD")
+    assert telegram.markups[0] is not None
+    assert telegram.sent[1][1].startswith("Как проверить лист")
+    assert telegram.markups[1] is None
+    assert telegram.sent[2][1].startswith("Пришлите фото листа")
+    assert queued == []
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize("url", [None, "http://127.0.0.1:5173"])
+def test_without_https_address_there_are_no_buttons(
+    bot: dict[str, Any], url: str | None
+) -> None:
+    client, telegram = bot["client"], bot["telegram"]
+    with_app(bot, url)
+
+    send(client, {"text": "/app"})
+    send(client, {"text": "/start"})
+
+    assert "не настроен" in telegram.sent[0][1]
+    assert telegram.markups == [None, None]
+
+
+async def test_bot_menu_is_configured() -> None:
+    from app.services.telegram_bot import COMMANDS, configure_bot
+
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.url.path.rsplit("/", 1)[1], json.loads(request.content)))
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    client = telegram_with(handler)
+    await configure_bot(client, APP)
+    await configure_bot(client, None)
+
+    names = [command["command"] for command in calls[0][1]["commands"]]
+    assert names == [name for name, _ in COMMANDS]
+    assert names[:2] == ["start", "photo"]
+    assert calls[1] == (
+        "setChatMenuButton",
+        {
+            "menu_button": {
+                "type": "web_app",
+                "text": "Приложение",
+                "web_app": {"url": "https://vitiguard.example.md/diagnosis/quick"},
+            }
+        },
+    )
+    # Без адреса приложения кнопка меню — список команд
+    assert calls[3] == ("setChatMenuButton", {"menu_button": {"type": "commands"}})

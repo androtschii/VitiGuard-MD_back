@@ -44,6 +44,70 @@ HELP = (
     "свете. Бот определит болезнь и сохранит проверку в историю VitiGuard MD. "
     "Предупреждения о риске по участкам — команда /alerts."
 )
+PHOTO_HINT = (
+    "Как проверить лист:\n"
+    "1. Нажмите скрепку и выберите «Камера» или фото из галереи.\n"
+    "2. Снимите один лист целиком, крупно, при дневном свете, без бликов.\n"
+    "3. Отправьте — через несколько секунд придёт диагноз.\n"
+    "Совет: отправьте фото «файлом», тогда сохранятся координаты съёмки и "
+    "проверка попадёт на свой участок."
+)
+WELCOME = (
+    "Здравствуйте! Это бот VitiGuard MD — мониторинг здоровья виноградников.\n"
+    "📷 Пришлите фото листа — бот определит болезнь.\n"
+    "🔔 /alerts — предупреждения о риске по участкам.\n"
+    "📱 /app — открыть приложение на телефоне."
+)
+NO_APP = (
+    "Адрес приложения для телефона пока не настроен. Откройте VitiGuard MD "
+    "в браузере компьютера."
+)
+
+# Меню команд у поля ввода: «/» или кнопка «Меню»
+COMMANDS = [
+    ("start", "Начало и ссылка на приложение"),
+    ("photo", "Как проверить лист по фото"),
+    ("alerts", "Предупреждения о риске по участкам"),
+    ("app", "Открыть VitiGuard MD на телефоне"),
+    ("help", "Что умеет бот"),
+]
+QUICK_DIAGNOSIS_PATH = "/diagnosis/quick"
+
+
+def https_url(url: str | None) -> str | None:
+    """Адрес для кнопок: Telegram принимает в кнопках только https."""
+    return url.rstrip("/") if url and url.startswith("https://") else None
+
+
+def app_keyboard(app_url: str | None) -> dict[str, Any] | None:
+    """Кнопки под сообщением: мини-приложение прямо в Telegram и обычная
+    ссылка — открыть то же приложение в браузере телефона."""
+    url = https_url(app_url)
+    if url is None:
+        return None
+    return {
+        "inline_keyboard": [
+            [
+                {
+                    "text": "📷 Проверить лист в приложении",
+                    "web_app": {"url": f"{url}{QUICK_DIAGNOSIS_PATH}"},
+                }
+            ],
+            [{"text": "🌐 Открыть в браузере телефона", "url": f"{url}/"}],
+        ]
+    }
+
+
+async def configure_bot(telegram: TelegramClient, app_url: str | None) -> None:
+    """Меню команд и кнопка меню бота; вызывается при запуске бота."""
+    await telegram.set_commands(COMMANDS)
+    url = https_url(app_url)
+    await telegram.set_menu_button(
+        "Приложение" if url else None,
+        f"{url}{QUICK_DIAGNOSIS_PATH}" if url else None,
+    )
+
+
 NOT_LINKED = (
     "Этот чат не привязан к учётной записи. Откройте профиль в VitiGuard MD, "
     "нажмите «Подключить Telegram» и перейдите по ссылке."
@@ -135,6 +199,7 @@ async def handle_update(
     cache: Cache,
     telegram: TelegramClient,
     enqueue: Callable[[str, list[Any]], object],
+    app_url: str | None = None,
 ) -> None:
     if update_.callback_query is not None:
         await toggle_subscription(session, telegram, update_.callback_query)
@@ -145,10 +210,18 @@ async def handle_update(
     chat_id = message.chat.id
     text = (message.text or "").strip()
 
+    keyboard = app_keyboard(app_url)
     if text.startswith("/start"):
         code = text.removeprefix("/start").strip()
         if not code:
-            await telegram.send_message(chat_id, HELP)
+            linked = await session.scalar(
+                select(User.id).where(User.telegram_chat_id == chat_id, User.is_active)
+            )
+            await telegram.send_message(
+                chat_id,
+                WELCOME if linked else f"{WELCOME}\n\n{NOT_LINKED}",
+                keyboard,
+            )
             return
         user = await link_chat(session, cache, code, chat_id)
         await telegram.send_message(
@@ -158,7 +231,27 @@ async def handle_update(
                 if user
                 else "Ссылка устарела или уже использована. Получите новую в профиле."
             ),
+            keyboard if user else None,
         )
+        return
+    # Подсказки и ссылка на приложение — и без привязанного чата
+    if text == "/app":
+        await telegram.send_message(
+            chat_id,
+            (
+                "Откройте VitiGuard MD: в Telegram — кнопкой ниже, "
+                "или в браузере телефона по ссылке."
+                if keyboard
+                else NO_APP
+            ),
+            keyboard,
+        )
+        return
+    if text == "/photo":
+        await telegram.send_message(chat_id, PHOTO_HINT)
+        return
+    if text == "/help":
+        await telegram.send_message(chat_id, f"{HELP}\n\n{WELCOME}", keyboard)
         return
 
     owner = await session.scalar(

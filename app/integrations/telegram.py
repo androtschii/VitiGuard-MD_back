@@ -41,6 +41,27 @@ class TelegramClient:
             payload["reply_markup"] = reply_markup
         await self._call("sendMessage", payload)
 
+    async def set_commands(self, commands: list[tuple[str, str]]) -> None:
+        """Меню команд у поля ввода («/» и кнопка «Меню»)."""
+        await self._call(
+            "setMyCommands",
+            {
+                "commands": [
+                    {"command": name, "description": description}
+                    for name, description in commands
+                ]
+            },
+        )
+
+    async def set_menu_button(self, text: str | None, url: str | None) -> None:
+        """Кнопка меню: открывает мини-приложение или, без адреса, список команд."""
+        button: dict[str, Any] = (
+            {"type": "web_app", "text": text, "web_app": {"url": url}}
+            if text and url
+            else {"type": "commands"}
+        )
+        await self._call("setChatMenuButton", {"menu_button": button})
+
     async def answer_callback(self, callback_id: str, text: str) -> None:
         """Ответ на нажатие кнопки: короткая подсказка поверх чата."""
         await self._call(

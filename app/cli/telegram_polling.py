@@ -21,7 +21,7 @@ from app.core.errors import ExternalServiceError
 from app.db.session import create_engine, create_session_factory
 from app.integrations.cache import RedisCache
 from app.integrations.telegram import TelegramClient
-from app.services.telegram_bot import Update, handle_update
+from app.services.telegram_bot import Update, configure_bot, handle_update
 from app.worker.celery_app import celery_app
 
 POLL_SECONDS = 30
@@ -57,7 +57,14 @@ async def poll(
                 # Ответ не ушёл — как и в вебхуке, обновление не повторяется
                 async with create_session_factory(engine)() as session:
                     with suppress(ExternalServiceError):
-                        await handle_update(update, session, cache, telegram, enqueue)
+                        await handle_update(
+                            update,
+                            session,
+                            cache,
+                            telegram,
+                            enqueue,
+                            settings.telegram_webapp_url,
+                        )
                 handled += 1
     finally:
         await cache.close()
@@ -74,6 +81,8 @@ def main() -> None:  # pragma: no cover — бесконечный цикл с �
         async with httpx.AsyncClient(timeout=settings.external_http_timeout) as http:
             telegram = TelegramClient(http, settings)
             await telegram.delete_webhook()
+            # Меню команд и кнопка «Приложение» у поля ввода
+            await configure_bot(telegram, settings.telegram_webapp_url)
             print(
                 f"Бот @{settings.telegram_bot_username} слушает обновления", flush=True
             )

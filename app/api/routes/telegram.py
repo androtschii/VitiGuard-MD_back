@@ -46,5 +46,7 @@ async def telegram_webhook(
     # Ответ в чат не ушёл — не страшно. Ошибка вебхука заставила бы Telegram
     # повторять то же обновление, и фото ушло бы на анализ дважды
     with suppress(ExternalServiceError):
-        await handle_update(update, session, cache, telegram, enqueue)
+        await handle_update(
+            update, session, cache, telegram, enqueue, settings.telegram_webapp_url
+        )
     return {"ok": True}

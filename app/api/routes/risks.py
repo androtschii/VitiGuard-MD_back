@@ -3,7 +3,13 @@ from dataclasses import asdict
 
 from fastapi import APIRouter, status
 
-from app.api.deps import CacheDep, CurrentUserDep, OpenMeteoDep, SessionDep
+from app.api.deps import (
+    CacheDep,
+    CurrentUserDep,
+    NotifierDep,
+    OpenMeteoDep,
+    SessionDep,
+)
 from app.repositories.vineyard import VineyardRepository
 from app.schemas.errors import ErrorResponse
 from app.schemas.risk import RiskOutlookRead, RiskRead, TodayRiskRead
@@ -50,9 +56,12 @@ async def refresh_vineyard_risks(
     user: CurrentUserDep,
     session: SessionDep,
     open_meteo: OpenMeteoDep,
+    notifier: NotifierDep,
 ) -> list[RiskRead]:
     view = await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
     await refresh_risks(session, open_meteo, view.vineyard)
+    # Пересчёт мог добавить предупреждения — значок в шапке обновится сразу
+    await notifier.alerts_changed(user.id)
     rows = await season_risk_history(session, view.vineyard)
     return [RiskRead.model_validate(row) for row in rows]
 

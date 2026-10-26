@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.core.config import Settings, get_settings
 from app.core.errors import ExternalServiceError
 from app.db.session import create_engine, create_session_factory
+from app.integrations.notifier import RedisNotifier
 from app.integrations.open_meteo import OpenMeteoClient
 from app.integrations.telegram import TelegramClient
 from app.models.vineyard import Vineyard
@@ -20,6 +21,7 @@ async def run_refresh_all(settings: Settings) -> dict[str, int]:
     """Пересчёт риска всех участков. Сбой погоды по одному участку не
     останавливает остальные — участок пересчитается в следующий раз."""
     engine = create_engine(settings)
+    notifier = RedisNotifier.from_settings(settings)
     refreshed = failed = notified = 0
     try:
         async with (
@@ -36,6 +38,8 @@ async def run_refresh_all(settings: Settings) -> dict[str, int]:
                     failed += 1
                 else:
                     refreshed += 1
+                    # Открытые вкладки владельца узнают о новых предупреждениях
+                    await notifier.alerts_changed(vineyard.owner_id)
             # Новые предупреждения — в Telegram, если бот настроен (pr-083)
             notified = (
                 await send_alerts(
@@ -45,6 +49,7 @@ async def run_refresh_all(settings: Settings) -> dict[str, int]:
                 else 0
             )
     finally:
+        await notifier.close()
         await engine.dispose()
     return {"refreshed": refreshed, "failed": failed, "notified": notified}
 

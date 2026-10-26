@@ -18,6 +18,7 @@ from app.api.routes import (
     varieties,
     vineyards,
     weather,
+    ws,
 )
 
 api_router = APIRouter()
@@ -39,3 +40,4 @@ api_router.include_router(tiles.router)
 api_router.include_router(ai.router)
 api_router.include_router(alerts.router)
 api_router.include_router(diagnoses.router)
+api_router.include_router(ws.router)

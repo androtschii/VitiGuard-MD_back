@@ -10,6 +10,7 @@ from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.db.session import create_engine, create_session_factory
 from app.integrations.cache import RedisCache
+from app.integrations.notifier import RedisNotifier
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -30,7 +31,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         cache = RedisCache.from_settings(settings)
         application.state.cache = cache
+        notifier = RedisNotifier.from_settings(settings)
+        application.state.notifier = notifier
         yield
+        await notifier.close()
         await cache.close()
         await application.state.http_client.aclose()
         # Закрывает все соединения пула, чтобы база не держала «зависшие» сессии

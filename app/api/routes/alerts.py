@@ -7,7 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.deps import CurrentUserDep, SessionDep
+from app.api.deps import CurrentUserDep, NotifierDep, SessionDep
 from app.core.errors import NotFoundError
 from app.models.alert import Alert
 from app.schemas.alert import AlertQuery, AlertRead, ReadAllResult, UnreadCount
@@ -74,12 +74,17 @@ async def unread_count(user: CurrentUserDep, session: SessionDep) -> UnreadCount
     responses={status.HTTP_404_NOT_FOUND: {"model": ErrorResponse}},
 )
 async def read_alert(
-    alert_id: uuid.UUID, user: CurrentUserDep, session: SessionDep
+    alert_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+    notifier: NotifierDep,
 ) -> AlertRead:
     alert = await _owned_alert(session, user.id, alert_id)
     if alert.read_at is None:
         alert.read_at = datetime.now(UTC)
         await session.commit()
+        # Значок обновится и в других вкладках и на телефоне
+        await notifier.alerts_changed(user.id)
         # После commit объект устарел: перечитываем вместе с участком
         alert = await _owned_alert(session, user.id, alert_id)
     return to_read(alert)
@@ -101,7 +106,9 @@ async def _owned_alert(
 
 
 @router.post("/read-all", summary="Отметить все предупреждения прочитанными")
-async def read_all(user: CurrentUserDep, session: SessionDep) -> ReadAllResult:
+async def read_all(
+    user: CurrentUserDep, session: SessionDep, notifier: NotifierDep
+) -> ReadAllResult:
     updated = await session.scalars(
         update(Alert)
         .where(Alert.user_id == user.id, Alert.read_at.is_(None))
@@ -110,4 +117,6 @@ async def read_all(user: CurrentUserDep, session: SessionDep) -> ReadAllResult:
     )
     count = len(updated.all())
     await session.commit()
+    if count:
+        await notifier.alerts_changed(user.id)
     return ReadAllResult(updated=count)

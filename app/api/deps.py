@@ -10,6 +10,7 @@ from app.core.errors import ForbiddenError, UnauthorizedError
 from app.core.tokens import TokenType, decode_token
 from app.integrations.cache import Cache
 from app.integrations.copernicus import CopernicusClient
+from app.integrations.notifier import Notifier
 from app.integrations.object_storage import ObjectStorage, Storage
 from app.integrations.open_meteo import OpenMeteoClient
 from app.integrations.telegram import TelegramClient
@@ -60,6 +61,14 @@ def get_cache(request: Request) -> Cache:
 
 
 CacheDep = Annotated[Cache, Depends(get_cache)]
+
+
+def get_notifier(request: Request) -> Notifier:
+    notifier: Notifier = request.app.state.notifier
+    return notifier
+
+
+NotifierDep = Annotated[Notifier, Depends(get_notifier)]
 
 # Параметры страницы берутся из строки запроса: ?page=2&size=20
 PageParamsDep = Annotated[PageParams, Query()]

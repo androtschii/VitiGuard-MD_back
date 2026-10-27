@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     environment: Environment = "local"
     debug: bool = False
     api_v1_prefix: str = "/api/v1"
+    # Адреса веб-клиента для CORS. Пусто по умолчанию: в разработке клиент ходит
+    # через прокси Vite на тот же адрес, и CORS не нужен вовсе
+    cors_origins: list[str] = []
     database_url: PostgresDsn = PostgresDsn(
         "postgresql+asyncpg://vitiguard:vitiguard@127.0.0.1:5432/vitiguard"
     )

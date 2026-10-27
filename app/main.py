@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from app import __version__
 from app.api.router import api_router
+from app.api.routes import health
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.db.session import create_engine, create_session_factory
@@ -48,6 +49,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.state.settings = settings
     register_error_handlers(application)
+    # Проверки состояния — в корне, вне версии API: их адрес ждут Docker и балансировщик
+    application.include_router(health.router)
     application.include_router(api_router, prefix=settings.api_v1_prefix)
     return application
 

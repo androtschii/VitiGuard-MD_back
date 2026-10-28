@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import (
     CheckConstraint,
     ForeignKey,
+    Index,
     LargeBinary,
     String,
     UniqueConstraint,
@@ -32,6 +33,11 @@ class SatelliteScan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __table_args__ = (
         # Один и тот же снимок по участку не обрабатывается дважды
         UniqueConstraint("vineyard_id", "product_id"),
+        # Снимки участка по времени: последний чистый снимок для тайлов NDVI,
+        # история индексов и аномалии (pr-091)
+        Index(
+            "ix_satellite_scans_vineyard_id_acquired_at", "vineyard_id", "acquired_at"
+        ),
         CheckConstraint("cloud_cover BETWEEN 0 AND 100", name="cloud_cover_range"),
         CheckConstraint(
             "parcel_cloud_cover BETWEEN 0 AND 100", name="parcel_cloud_cover_range"

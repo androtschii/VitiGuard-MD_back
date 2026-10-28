@@ -1,5 +1,6 @@
 import asyncio
 from logging.config import fileConfig
+from typing import Any
 
 from alembic import context
 from geoalchemy2 import alembic_helpers
@@ -17,6 +18,24 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+# Индексы по выражению (pr-091): Alembic сравнивает их как текст, а PostgreSQL
+# хранит выражение в своей записи (geography(GEOMETRY,-1) → geography(Geometry,4326)),
+# и сравнение видело бы изменение там, где его нет. Что индекс совпадает с
+# запросами и используется, проверяет tests/test_query_indexes.py
+EXPRESSION_INDEXES = frozenset({"ix_osm_vineyards_geom_geography"})
+
+
+def include_object(
+    obj: Any, name: str | None, type_: str, reflected: bool, compare_to: Any
+) -> bool:
+    if type_ == "index" and name in EXPRESSION_INDEXES:
+        return False
+    # Функция GeoAlchemy2 без аннотаций типов
+    included = alembic_helpers.include_object(  # type: ignore[no-untyped-call]
+        obj, name, type_, reflected, compare_to
+    )
+    return bool(included)
+
 
 def get_url() -> str:
     # URL, заданный явно (например, в тестах), важнее настроек приложения
@@ -29,7 +48,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        include_object=alembic_helpers.include_object,
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -42,7 +61,7 @@ def do_run_migrations(connection: Connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        include_object=alembic_helpers.include_object,
+        include_object=include_object,
         render_item=alembic_helpers.render_item,
         process_revision_directives=alembic_helpers.writer,
     )

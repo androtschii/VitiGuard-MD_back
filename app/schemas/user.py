@@ -32,6 +32,8 @@ class NotificationSettings(RequestSchema):
 
 
 class NotificationSettingsRead(ResponseSchema):
+    """Порог предупреждений о риске болезней пользователя."""
+
     alert_level: Literal["medium", "high"] | None
 
 

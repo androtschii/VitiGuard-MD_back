@@ -21,10 +21,18 @@ PlantingYear = Annotated[int, Field(ge=1900), AfterValidator(_not_in_future)]
 
 
 class VineyardCreate(RequestSchema):
+    """Новый участок: название, контур и, по желанию, сорт и год посадки."""
+
     name: str = Field(min_length=1, max_length=255)
-    geometry: AreaGeometry
-    variety_id: uuid.UUID | None = None
-    planting_year: PlantingYear | None = None
+    geometry: AreaGeometry = Field(
+        description="Контур участка: GeoJSON Polygon или MultiPolygon в WGS 84"
+    )
+    variety_id: uuid.UUID | None = Field(
+        default=None, description="Сорт из справочника"
+    )
+    planting_year: PlantingYear | None = Field(
+        default=None, description="Год посадки, не позже текущего"
+    )
 
 
 class VineyardUpdate(RequestSchema):
@@ -54,10 +62,12 @@ class VarietyBrief(ResponseSchema):
 
 
 class VineyardRead(EntityResponse):
+    """Участок пользователя."""
+
     name: str
     geometry: MultiPolygonRead
     # Площадь считает PostGIS по эллипсоиду WGS84 (ST_Area по geography)
-    area_ha: float = Field(ge=0)
+    area_ha: float = Field(ge=0, description="Площадь в гектарах по контуру")
     variety: VarietyBrief | None
     planting_year: int | None
 
@@ -69,22 +79,30 @@ class NearbyQuery(RequestSchema):
     lon: float = Field(ge=-180, le=180)
     limit: int = Field(default=5, ge=1, le=20)
     # Дальше 50 км «ближайший участок» уже не про то, где стоит пользователь
-    max_distance_km: float = Field(default=50, gt=0, le=500)
+    max_distance_km: float = Field(
+        default=50, gt=0, le=500, description="Радиус поиска в километрах"
+    )
 
 
 class VineyardNearby(VineyardRead):
+    """Участок поблизости от точки (для подстановки участка по координатам фото)."""
+
     # 0 — точка внутри участка
-    distance_m: float = Field(ge=0)
+    distance_m: float = Field(ge=0, description="Расстояние от точки до контура, м")
 
 
 class SkippedBoundaryRead(ResponseSchema):
+    """Контур из файла, который не импортирован, и причина."""
+
     # Номер объекта в файле, с единицы — как его видит человек в QGIS
-    index: int
+    index: int = Field(description="Номер контура в файле, с нуля")
     name: str | None
-    reason: str
+    reason: str = Field(description="Почему контур не импортирован")
 
 
 class BoundaryImportResult(ResponseSchema):
+    """Итог импорта контуров участков из файла: сколько создано и что пропущено."""
+
     created: list[VineyardRead]
     skipped: list[SkippedBoundaryRead]
 
@@ -92,7 +110,9 @@ class BoundaryImportResult(ResponseSchema):
 class VineyardContextRead(ResponseSchema):
     """Местность вокруг участка по данным OpenStreetMap."""
 
-    osm_overlap_ratio: float = Field(ge=0, le=1)
+    osm_overlap_ratio: float = Field(
+        ge=0, le=1, description="Доля площади участка внутри виноградников OSM"
+    )
     osm_vineyards_within_1km: int = Field(ge=0)
     nearest_osm_distance_m: float | None
     # Район, в котором лежит участок; None — за пределами Молдовы

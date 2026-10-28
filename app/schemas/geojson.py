@@ -28,11 +28,15 @@ PolygonCoordinates = Annotated[list[LinearRing], Field(min_length=1)]
 
 
 class PolygonGeometry(RequestSchema):
+    """Геометрия GeoJSON Polygon в WGS 84 (долгота, широта)."""
+
     type: Literal["Polygon"]
     coordinates: PolygonCoordinates
 
 
 class MultiPolygonGeometry(RequestSchema):
+    """Геометрия GeoJSON MultiPolygon в WGS 84 (долгота, широта)."""
+
     type: Literal["MultiPolygon"]
     coordinates: Annotated[list[PolygonCoordinates], Field(min_length=1)]
 

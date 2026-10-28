@@ -8,6 +8,8 @@ from app.models.enums import string_enum
 
 
 class BerryColor(enum.StrEnum):
+    """Цвет ягод сорта: белый, розовый или красный."""
+
     WHITE = "white"
     # Розовые и серые ягоды (Traminer Roz, Pinot Gris)
     ROSE = "rose"
@@ -15,6 +17,8 @@ class BerryColor(enum.StrEnum):
 
 
 class Susceptibility(enum.StrEnum):
+    """Восприимчивость сорта к болезни: низкая, средняя или высокая."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"

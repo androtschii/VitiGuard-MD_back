@@ -35,6 +35,8 @@ MAX_DAYS = 3 * 366
 
 
 class DataFormat(StrEnum):
+    """Формат выгрузки истории участка: книга XLSX или архив CSV."""
+
     xlsx = "xlsx"
     csv = "csv"
 

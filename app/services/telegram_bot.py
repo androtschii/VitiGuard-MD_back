@@ -115,21 +115,29 @@ NOT_LINKED = (
 
 
 class Chat(BaseModel):
+    """Чат Telegram из обновления бота."""
+
     id: int
 
 
 class PhotoSize(BaseModel):
+    """Один из размеров фото, присланного боту."""
+
     file_id: str
     width: int
     height: int
 
 
 class Document(BaseModel):
+    """Файл, присланный боту документом (без сжатия, с EXIF)."""
+
     file_id: str
     mime_type: str | None = None
 
 
 class Message(BaseModel):
+    """Сообщение Telegram из обновления бота: текст, фото или документ."""
+
     message_id: int = 0
     chat: Chat
     text: str | None = None
@@ -147,6 +155,8 @@ class CallbackQuery(BaseModel):
 
 
 class Update(BaseModel):
+    """Обновление Telegram Bot API (вебхук или getUpdates)."""
+
     update_id: int
     message: Message | None = None
     callback_query: CallbackQuery | None = None

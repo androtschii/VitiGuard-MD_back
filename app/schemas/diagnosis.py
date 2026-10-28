@@ -11,8 +11,10 @@ Overlay = Literal["heatmap", "lesion"]
 
 
 class DiseaseProbability(ResponseSchema):
+    """Вероятность класса по ответу модели диагностики."""
+
     disease: str = Field(examples=["powdery_mildew"])
-    probability: float = Field(ge=0, le=1)
+    probability: float = Field(ge=0, le=1, description="Вероятность класса, 0..1")
 
 
 class LesionRead(ResponseSchema):
@@ -21,7 +23,7 @@ class LesionRead(ResponseSchema):
     # Прозрачный PNG (data URL) с пропорциями исходного фото: красным — поражение
     mask: str
     # Доля поражённой площади листа, 0..1
-    severity: float = Field(ge=0, le=1)
+    severity: float = Field(ge=0, le=1, description="Доля площади листа под поражением")
 
 
 class LocationRead(ResponseSchema):
@@ -50,7 +52,7 @@ class DiagnosisRead(ResponseSchema):
 
     model: str = Field(examples=["efficientnet_b0"])
     disease: str = Field(examples=["powdery_mildew"])
-    confidence: float = Field(ge=0, le=1)
+    confidence: float = Field(ge=0, le=1, description="Вероятность диагноза, 0..1")
     # Модель не уверена: лист стоит переснять крупным планом при дневном свете
     low_confidence: bool
     top: list[DiseaseProbability]
@@ -66,7 +68,9 @@ class DiagnosisRead(ResponseSchema):
 
 
 class DiagnosisJobStarted(ResponseSchema):
-    task_id: str
+    """Фоновая диагностика поставлена в очередь; результат — по task_id."""
+
+    task_id: str = Field(description="Id фоновой задачи для опроса результата")
 
 
 class DiagnosisJobRead(ResponseSchema):
@@ -88,6 +92,8 @@ class ReviewRead(ResponseSchema):
 
 
 class ReviewUpdate(RequestSchema):
+    """Заключение агронома по проверке листа."""
+
     # Класс — как у модели: строчные латинские буквы и подчёркивание
     disease: str = Field(pattern=r"^[a-z_]{1,50}$", examples=["downy_mildew"])
     comment: str | None = Field(default=None, max_length=1000)

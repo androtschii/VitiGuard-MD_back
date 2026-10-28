@@ -10,6 +10,8 @@ from app.api.router import api_router
 from app.api.routes import health
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
+from app.core.logging import configure_logging
+from app.core.request_log import RequestLogMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.db.session import create_engine, create_session_factory
 from app.integrations.cache import RedisCache
@@ -19,6 +21,7 @@ from app.integrations.notifier import RedisNotifier
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Собирает приложение; в тестах можно передать свои настройки."""
     settings = settings or get_settings()
+    configure_logging(settings)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -65,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     # Добавлен последним — значит внешний: заголовки получают все ответы,
     # и preflight-ответы CORS тоже
+    application.add_middleware(RequestLogMiddleware)
     application.add_middleware(
         SecurityHeadersMiddleware, hsts=settings.environment == "production"
     )

@@ -72,6 +72,9 @@ module = [
     "matplotlib.*",
     "lightgbm.*",
     "pandas.*",
+    # Отсев «не лист винограда» (ml/pr-021): ставятся при запуске команды
+    "onnx.*",
+    "onnxruntime.*",
 ]
 ignore_missing_imports = true
 

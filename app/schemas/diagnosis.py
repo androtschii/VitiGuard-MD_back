@@ -55,6 +55,18 @@ class DiagnosisRead(ResponseSchema):
     confidence: float = Field(ge=0, le=1, description="Вероятность диагноза, 0..1")
     # Модель не уверена: лист стоит переснять крупным планом при дневном свете
     low_confidence: bool
+    grape_leaf: bool = Field(
+        default=True,
+        description="Похоже ли фото на лист винограда. false — диагноз не "
+        "показывается и проверка не сохраняется: модель знает только болезни "
+        "винограда и на любом снимке выбрала бы одну из них",
+    )
+    leaf_score: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+        description="Оценка отсева «лист винограда», 0..1; null — отсев не обучен",
+    )
     top: list[DiseaseProbability]
     # Тепловая карта: какие области фото повлияли на ответ (прозрачный PNG,
     # data URL); None — модель экспортирована без карты активации

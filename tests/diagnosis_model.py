@@ -39,7 +39,7 @@ def _save(graph: onnx.GraphProto, path: Path, meta: dict[str, object]) -> Path:
     return path
 
 
-def build_model(path: Path, with_cam: bool = False) -> Path:
+def build_model(path: Path, with_cam: bool = False, with_gate: bool = False) -> Path:
     weights = np.zeros((3, len(CLASSES)), dtype=np.float32)
     weights[0, CLASSES.index("healthy")] = 5
     weights[1, CLASSES.index("downy_mildew")] = 5
@@ -60,6 +60,25 @@ def build_model(path: Path, with_cam: bool = False) -> Path:
             )
         )
         initializers.append(numpy_helper.from_array(kernel, "kernel"))
+    if with_gate:
+        # Признаки для отсева — средние каналов; отсев (ниже) считает листом
+        # винограда «зелёный» снимок, а «красный» и «синий» — нет
+        nodes.append(helper.make_node("Identity", ["flat"], ["features"]))
+        outputs.append(
+            helper.make_tensor_value_info("features", TensorProto.FLOAT, ["batch", 3])
+        )
+        path.with_suffix(".gate.json").write_text(
+            json.dumps(
+                {
+                    "mean": [0, 0, 0],
+                    "std": [1, 1, 1],
+                    "weights": [-5, 10, -5],
+                    "bias": -2,
+                    "threshold": 0.5,
+                }
+            ),
+            encoding="utf-8",
+        )
     graph = helper.make_graph(
         nodes, "tiny", [_image_input()], outputs, initializer=initializers
     )

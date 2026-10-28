@@ -16,6 +16,10 @@ from app.services.telegram_bot import DIAGNOSE_PHOTO, diagnosis_text
 from app.tasks.diagnosis import load_classifier, load_segmenter
 
 MAX_IMAGE_BYTES = 10 * 1024 * 1024
+NOT_A_LEAF = (
+    "Похоже, на фото не лист винограда. Снимите один лист винограда крупным "
+    "планом при дневном свете — так, чтобы он занимал почти весь кадр."
+)
 
 
 async def diagnose_photo(
@@ -51,6 +55,11 @@ async def diagnose_photo(
         3,
     )
     diagnosis.location = photo_location(data)
+    if not diagnosis.grape_leaf:
+        # Модель знает только болезни винограда: диагноз по такому фото был бы
+        # выдумкой, и в историю оно не сохраняется
+        await telegram.send_message(chat_id, NOT_A_LEAF)
+        return NOT_A_LEAF
     version = describe_model(settings.diagnosis_model_path).version
     engine = create_engine(settings)
     try:

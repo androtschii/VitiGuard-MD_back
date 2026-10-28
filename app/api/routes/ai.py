@@ -2,11 +2,12 @@ import uuid
 from typing import Annotated, Any, Literal
 
 from celery.result import AsyncResult
-from fastapi import APIRouter, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse
 
 from app.api.deps import CurrentUserDep, SessionDep, SettingsDep, StorageDep
+from app.api.rate_limit import DIAGNOSE_LIMIT, per_user
 from app.core.errors import (
     NotFoundError,
     PayloadTooLargeError,
@@ -107,6 +108,7 @@ async def classifier_model_file(
 
 @router.post(
     "/diagnose",
+    dependencies=[Depends(per_user(DIAGNOSE_LIMIT))],
     summary="Определение болезни по фото листа",
     responses={
         status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse},
@@ -177,6 +179,7 @@ JOB_STATUSES: dict[str, JobStatus] = {"PENDING": "pending", "FAILURE": "failed"}
 # а ставит задачу воркеру, и клиент спрашивает о результате
 @router.post(
     "/diagnose/jobs",
+    dependencies=[Depends(per_user(DIAGNOSE_LIMIT))],
     status_code=status.HTTP_202_ACCEPTED,
     summary="Диагностика фото листа в фоне",
     responses={

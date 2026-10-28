@@ -1,8 +1,15 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Response, status
+from fastapi import APIRouter, Cookie, Depends, Response, status
 
 from app.api.deps import ResetMailerDep, SessionDep, SettingsDep
+from app.api.rate_limit import (
+    LOGIN,
+    PASSWORD_RESET,
+    REGISTER,
+    TELEGRAM_LOGIN,
+    per_address,
+)
 from app.core.config import Settings
 from app.core.tokens import IssuedToken
 from app.schemas.auth import (
@@ -68,6 +75,7 @@ RefreshCookie = Annotated[str | None, Cookie(alias=REFRESH_COOKIE)]
 
 @router.post(
     "/register",
+    dependencies=[Depends(per_address(REGISTER))],
     status_code=status.HTTP_201_CREATED,
     summary="Регистрация",
     responses={status.HTTP_409_CONFLICT: {"model": ErrorResponse}},
@@ -79,6 +87,7 @@ async def register(data: RegisterRequest, session: SessionDep) -> UserRead:
 
 @router.post(
     "/login",
+    dependencies=[Depends(per_address(LOGIN))],
     summary="Вход",
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
@@ -98,6 +107,7 @@ async def log_in(
 
 @router.post(
     "/telegram",
+    dependencies=[Depends(per_address(TELEGRAM_LOGIN))],
     summary="Вход в мини-приложение Telegram",
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
@@ -144,6 +154,7 @@ async def log_out(
 
 @router.post(
     "/password-reset",
+    dependencies=[Depends(per_address(PASSWORD_RESET))],
     status_code=status.HTTP_202_ACCEPTED,
     summary="Запрос ссылки для сброса пароля",
 )

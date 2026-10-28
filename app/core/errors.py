@@ -18,6 +18,9 @@ class AppError(Exception):
         super().__init__(detail)
         self.detail = detail
 
+    def response_headers(self) -> dict[str, str] | None:
+        return self.headers
+
 
 class NotFoundError(AppError):
     status_code = 404
@@ -68,13 +71,27 @@ class UnauthorizedError(AppError):
     headers: ClassVar[dict[str, str] | None] = {"WWW-Authenticate": "Bearer"}
 
 
+class TooManyRequestsError(AppError):
+    """Превышен предел частоты запросов (pr-090)."""
+
+    status_code = 429
+
+    def __init__(self, detail: str, retry_after: int) -> None:
+        super().__init__(detail)
+        self.retry_after = retry_after
+
+    def response_headers(self) -> dict[str, str] | None:
+        # По стандарту 429 сообщает, через сколько секунд можно повторить
+        return {"Retry-After": str(self.retry_after)}
+
+
 async def handle_app_error(_: Request, error: Exception) -> JSONResponse:
     assert isinstance(error, AppError)
     body = ErrorResponse(detail=error.detail)
     return JSONResponse(
         status_code=error.status_code,
         content=body.model_dump(),
-        headers=error.headers,
+        headers=error.response_headers(),
     )
 
 

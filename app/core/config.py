@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     # Адреса веб-клиента для CORS. Пусто по умолчанию: в разработке клиент ходит
     # через прокси Vite на тот же адрес, и CORS не нужен вовсе
     cors_origins: list[str] = []
+    # Ограничение частоты запросов (pr-090). None — включено везде, кроме тестов:
+    # иначе обычные тесты упирались бы в предел входа с одного адреса
+    rate_limit_enabled: bool | None = None
     database_url: PostgresDsn = PostgresDsn(
         "postgresql+asyncpg://vitiguard:vitiguard@127.0.0.1:5432/vitiguard"
     )
@@ -138,6 +141,12 @@ class Settings(BaseSettings):
                 "celery_task_soft_time_limit должен быть меньше celery_task_time_limit"
             )
         return self
+
+    @property
+    def rate_limits_on(self) -> bool:
+        if self.rate_limit_enabled is None:
+            return self.environment != "test"
+        return self.rate_limit_enabled
 
 
 @lru_cache

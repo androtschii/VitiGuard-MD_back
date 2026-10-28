@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 
 class UserRole(enum.StrEnum):
+    """Роль пользователя: виноградарь, агроном или администратор."""
+
     ADMIN = "admin"
     AGRONOMIST = "agronomist"
     USER = "user"

@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
+from app.api.openapi import DESCRIPTION, TAGS
 from app.api.router import api_router
 from app.api.routes import health, metrics
 from app.core.config import Settings, get_settings
@@ -49,6 +50,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     application = FastAPI(
         title=settings.app_name,
+        description=DESCRIPTION,
+        openapi_tags=TAGS,
         version=__version__,
         debug=settings.debug,
         lifespan=lifespan,

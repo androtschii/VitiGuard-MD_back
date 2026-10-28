@@ -4,6 +4,8 @@ from app.schemas.base import ResponseSchema
 
 
 class DistrictRef(ResponseSchema):
+    """Район Молдовы: код ISO 3166-2 и название."""
+
     iso: str = Field(examples=["MD-CU"])
     name: str = Field(examples=["Chișinău"])
 

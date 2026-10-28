@@ -2,7 +2,7 @@ import math
 from collections.abc import Sequence
 from typing import Self
 
-from pydantic import Field, computed_field
+from pydantic import ConfigDict, Field, computed_field
 
 from app.schemas.base import RequestSchema, ResponseSchema
 
@@ -22,10 +22,22 @@ class PageParams(RequestSchema):
 
 
 class Page[T](ResponseSchema):
+    """Страница списка: элементы, всего записей, номер и размер страницы, число страниц."""
+
+    # Описание из docstring не переходит в Page[X]: подставленный тип — новый
+    # класс без него. Конфигурация наследуется, поэтому описание — здесь
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "description": "Страница списка: элементы, всего записей, номер и "
+            "размер страницы, число страниц."
+        },
+    )
+
     items: list[T]
-    total: int = Field(ge=0)
-    page: int = Field(ge=1)
-    size: int = Field(ge=1)
+    total: int = Field(ge=0, description="Всего записей по запросу")
+    page: int = Field(ge=1, description="Номер страницы, с единицы")
+    size: int = Field(ge=1, description="Записей на странице")
 
     @computed_field  # type: ignore[prop-decorator]
     @property

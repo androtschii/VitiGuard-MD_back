@@ -14,6 +14,8 @@ from app.repositories.vineyard import VineyardView
 
 
 class ExportFormat(StrEnum):
+    """Формат выгрузки контуров участков: GeoJSON, KML или Shapefile."""
+
     geojson = "geojson"
     shapefile = "shapefile"
 

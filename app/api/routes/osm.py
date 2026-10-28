@@ -23,6 +23,8 @@ MAX_BBOX_DEGREES = 1.0
 
 
 class ImportStarted(BaseModel):
+    """Импорт слоя виноградников OpenStreetMap поставлен в очередь."""
+
     task_id: str
 
 

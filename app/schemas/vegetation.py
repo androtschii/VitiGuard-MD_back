@@ -55,4 +55,6 @@ class NdviAnomalyRead(ResponseSchema):
 
 
 class VegetationRefreshStarted(BaseModel):
+    """Пересчёт индексов вегетации по новым снимкам поставлен в очередь."""
+
     task_id: str

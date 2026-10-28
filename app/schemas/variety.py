@@ -5,6 +5,8 @@ from app.schemas.base import EntityResponse, RequestSchema
 
 
 class VarietyCreate(RequestSchema):
+    """Новый сорт винограда в справочнике."""
+
     name: str = Field(min_length=1, max_length=100)
     berry_color: BerryColor
     downy_mildew_susceptibility: Susceptibility | None = None
@@ -32,6 +34,8 @@ class VarietyUpdate(RequestSchema):
 
 
 class VarietyRead(EntityResponse):
+    """Сорт винограда из справочника."""
+
     name: str
     berry_color: BerryColor
     downy_mildew_susceptibility: Susceptibility | None

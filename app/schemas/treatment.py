@@ -9,12 +9,23 @@ from app.services.treatments import Action
 
 
 class TreatmentCreate(RequestSchema):
-    applied_on: date
-    fungicide: Fungicide
-    product: str | None = Field(default=None, max_length=200, examples=["Ридомил Голд"])
+    """Запись о проведённой обработке участка."""
+
+    applied_on: date = Field(description="Дата обработки, не позже сегодняшней")
+    fungicide: Fungicide = Field(
+        description="Тип препарата по действию: от него зависит срок защиты"
+    )
+    product: str | None = Field(
+        default=None,
+        max_length=200,
+        examples=["Ридомил Голд"],
+        description="Название препарата для журнала, в расчёт не входит",
+    )
 
 
 class TreatmentRead(EntityResponse):
+    """Обработка из журнала участка."""
+
     vineyard_id: uuid.UUID
     applied_on: date
     fungicide: Fungicide
@@ -22,12 +33,14 @@ class TreatmentRead(EntityResponse):
 
 
 class RecommendationRead(ResponseSchema):
+    """Рекомендация плана: что сделать, против какой болезни и до какого дня."""
+
     action: Action
     disease: Disease
     # null — осмотр, препарат не нужен
     fungicide: Fungicide | None
-    due_by: date
-    risk_day: date
+    due_by: date = Field(description="Последний день, когда действие ещё имеет смысл")
+    risk_day: date = Field(description="День риска, к которому относится рекомендация")
     reason: str = Field(
         examples=[
             "downy_infection_forecast",

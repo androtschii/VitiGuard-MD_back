@@ -30,8 +30,12 @@ class AlertRead(EntityResponse):
 
 
 class UnreadCount(ResponseSchema):
+    """Число непрочитанных предупреждений."""
+
     count: int = Field(ge=0)
 
 
 class ReadAllResult(ResponseSchema):
+    """Сколько предупреждений отмечено прочитанными."""
+
     updated: int = Field(ge=0)

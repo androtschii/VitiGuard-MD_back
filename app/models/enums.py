@@ -22,11 +22,15 @@ def string_enum[E: enum.StrEnum](enum_cls: type[E], name: str) -> Enum:
 
 
 class Disease(enum.StrEnum):
+    """Болезнь винограда, для которой считается риск."""
+
     DOWNY_MILDEW = "downy_mildew"
     POWDERY_MILDEW = "powdery_mildew"
 
 
 class RiskLevel(enum.StrEnum):
+    """Уровень риска заражения: низкий, средний или высокий."""
+
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"

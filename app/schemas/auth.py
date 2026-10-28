@@ -42,6 +42,8 @@ Password = Annotated[
 
 
 class LoginRequest(RequestSchema):
+    """Вход по email и паролю."""
+
     email: Email
     # При входе правила сложности не проверяются: пароль мог быть задан по
     # прежним правилам, а неверный пароль всё равно не пройдёт проверку хэша
@@ -62,6 +64,8 @@ class TokenResponse(ResponseSchema):
 
 
 class RegisterRequest(RequestSchema):
+    """Регистрация новой учётной записи."""
+
     email: Email
     password: Password
     full_name: str = Field(min_length=2, max_length=255)
@@ -71,10 +75,14 @@ class RegisterRequest(RequestSchema):
 
 
 class PasswordResetRequest(RequestSchema):
+    """Запрос письма со ссылкой на сброс пароля."""
+
     email: Email
 
 
 class PasswordResetConfirm(RequestSchema):
+    """Новый пароль по токену из письма сброса."""
+
     token: str = Field(min_length=1, max_length=200)
     new_password: Password
 

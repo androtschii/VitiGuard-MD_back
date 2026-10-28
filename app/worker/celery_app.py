@@ -1,6 +1,10 @@
+from typing import Any
+
 from celery import Celery
+from celery.signals import setup_logging
 
 from app.core.config import Settings, get_settings
+from app.core.logging import configure_logging
 
 # Модули с задачами; новые задачи (диагностика, спутниковые индексы, прогнозы)
 # добавляются сюда
@@ -58,3 +62,10 @@ def create_celery(settings: Settings) -> Celery:
 
 
 celery_app = create_celery(get_settings())
+
+
+# Без этого обработчика Celery настроил бы свой журнал в обычном тексте; с ним
+# воркер пишет тот же JSON, что и API
+@setup_logging.connect
+def _configure_worker_logging(**_: Any) -> None:
+    configure_logging(get_settings())

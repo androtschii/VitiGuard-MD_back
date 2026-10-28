@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     app_name: str = "VitiGuard MD API"
     environment: Environment = "local"
     debug: bool = False
+    # Уровень журнала; в production DEBUG выдаёт лишнее и замедляет сервис
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     api_v1_prefix: str = "/api/v1"
     # Адреса веб-клиента для CORS. Пусто по умолчанию: в разработке клиент ходит
     # через прокси Vite на тот же адрес, и CORS не нужен вовсе

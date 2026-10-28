@@ -7,10 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app import __version__
 from app.api.router import api_router
-from app.api.routes import health
+from app.api.routes import health, metrics
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
 from app.core.logging import configure_logging
+from app.core.metrics import Metrics, MetricsMiddleware
 from app.core.request_log import RequestLogMiddleware
 from app.core.security_headers import SecurityHeadersMiddleware
 from app.db.session import create_engine, create_session_factory
@@ -53,6 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.settings = settings
+    application.state.metrics = Metrics()
     register_error_handlers(application)
     if settings.cors_origins:
         # Только перечисленные адреса и никогда не «*»: с credentials браузер
@@ -68,12 +70,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     # Добавлен последним — значит внешний: заголовки получают все ответы,
     # и preflight-ответы CORS тоже
+    application.add_middleware(
+        MetricsMiddleware,
+        metrics=application.state.metrics,
+        api_prefix=settings.api_v1_prefix,
+    )
     application.add_middleware(RequestLogMiddleware)
     application.add_middleware(
         SecurityHeadersMiddleware, hsts=settings.environment == "production"
     )
     # Проверки состояния — в корне, вне версии API: их адрес ждут Docker и балансировщик
     application.include_router(health.router)
+    application.include_router(metrics.router)
     application.include_router(api_router, prefix=settings.api_v1_prefix)
     return application
 

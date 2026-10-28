@@ -113,5 +113,7 @@ def configure_logging(settings: Settings) -> None:
         logging.getLogger(name).propagate = True
     # Журнал запросов пишет наша обёртка (с id запроса и длительностью)
     logging.getLogger("uvicorn.access").disabled = True
-    # httpx пишет каждый внешний запрос на INFO — это шум
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+    # httpx пишет каждый внешний запрос на INFO — это шум. Проект использует
+    # пакет httpx2, его логгер называется по пакету
+    for name in ("httpx", "httpx2"):
+        logging.getLogger(name).setLevel(logging.WARNING)

@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     # Ограничение частоты запросов (pr-090). None — включено везде, кроме тестов:
     # иначе обычные тесты упирались бы в предел входа с одного адреса
     rate_limit_enabled: bool | None = None
+    # Токен для /metrics; без него метрики открыты (для своей машины)
+    metrics_token: SecretStr | None = None
     database_url: PostgresDsn = PostgresDsn(
         "postgresql+asyncpg://vitiguard:vitiguard@127.0.0.1:5432/vitiguard"
     )

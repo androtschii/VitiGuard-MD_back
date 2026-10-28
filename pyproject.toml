@@ -17,6 +17,7 @@ dependencies = [
     "onnxruntime>=1.30",
     "openpyxl>=3.1",
     "pillow>=12.0",
+    "prometheus-client>=0.26.0",
     "pwdlib[argon2]>=0.3.1",
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.15.1",

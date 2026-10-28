@@ -51,7 +51,8 @@ async def run_diagnosis(
             top_k,
         )
         diagnosis.location = photo_location(data)
-        if save:
+        # Не лист винограда — в историю не сохраняется (как и в /ai/diagnose)
+        if save and diagnosis.grape_leaf:
             version = describe_model(settings.diagnosis_model_path).version
             engine = create_engine(settings)
             try:

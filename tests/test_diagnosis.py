@@ -208,3 +208,54 @@ def test_rejects_truncated_file() -> None:
 
     with pytest.raises(BadRequestError, match="повреждён"):
         read_leaf_image(buffer.getvalue()[:2000])
+
+
+GREEN = (0, 200, 0)
+
+
+def test_gate_passes_grape_leaf_and_rejects_other(tmp_path: Path) -> None:
+    classifier = LeafClassifier(
+        build_model(tmp_path / "gate.onnx", with_cam=True, with_gate=True)
+    )
+
+    leaf = classifier.classify(Image.new("RGB", (40, 40), GREEN))
+    other = classifier.classify(Image.new("RGB", (40, 40), RED))
+
+    assert leaf.is_grape_leaf is True
+    assert leaf.leaf_score is not None
+    assert leaf.leaf_score > 0.5
+    assert other.is_grape_leaf is False
+    assert other.leaf_score is not None
+    assert other.leaf_score < 0.5
+    # Карта активации по-прежнему вторым выходом, признаки — третьим
+    assert leaf.activation is not None
+
+
+def test_gate_needs_both_features_and_gate_file(tmp_path: Path) -> None:
+    gated = build_model(tmp_path / "gate.onnx", with_gate=True)
+    gated.with_suffix(".gate.json").unlink()
+    without_file = LeafClassifier(gated)
+    plain = tmp_path / "plain.onnx"
+    build_model(plain)
+    (tmp_path / "plain.gate.json").write_text("{}", encoding="utf-8")
+    without_output = LeafClassifier(plain)
+
+    for classifier in (without_file, without_output):
+        result = classifier.classify(Image.new("RGB", (40, 40), RED))
+        assert result.is_grape_leaf is True
+        assert result.leaf_score is None
+        assert classifier.has_activation is False
+
+
+def test_analyze_marks_not_a_leaf(tmp_path: Path) -> None:
+    classifier = LeafClassifier(build_model(tmp_path / "gate.onnx", with_gate=True))
+
+    other = analyze_leaf(Image.new("RGB", (40, 40), RED), classifier, None, 3)
+    leaf = analyze_leaf(Image.new("RGB", (40, 40), GREEN), classifier, None, 3)
+
+    assert other.grape_leaf is False
+    # Уверенная модель на чужом снимке — всё равно «не уверена»
+    assert other.low_confidence is True
+    assert leaf.grape_leaf is True
+    assert leaf.leaf_score is not None
+    assert leaf.leaf_score > 0.5

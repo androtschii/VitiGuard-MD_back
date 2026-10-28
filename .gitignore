@@ -25,3 +25,5 @@ ml/results/
 
 # Веса моделей не хранятся в git (см. models/README.md)
 /models/*.onnx
+# Отсев «не лист винограда» обучен на признаках конкретных весов (ml/pr-021)
+/models/*.gate.json

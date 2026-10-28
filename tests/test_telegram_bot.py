@@ -16,7 +16,7 @@ from app.core.config import Settings
 from app.core.errors import ExternalServiceError
 from app.integrations.telegram import TelegramClient
 from app.services.telegram_bot import DIAGNOSE_PHOTO, diagnosis_text
-from app.tasks.telegram import diagnose_photo
+from app.tasks.telegram import NOT_A_LEAF, diagnose_photo
 from app.worker.celery_app import TASK_MODULES
 
 TOKEN = "123456:secret-bot-token"
@@ -549,3 +549,21 @@ async def test_bot_menu_is_configured() -> None:
     )
     # Без адреса приложения кнопка меню — список команд
     assert calls[3] == ("setChatMenuButton", {"menu_button": {"type": "commands"}})
+
+
+async def test_task_answers_not_a_leaf_without_saving(tmp_path: Path) -> None:
+    telegram = FakeTelegram(photo((220, 0, 0)))
+    storage = MemoryStorage()
+    settings = Settings(
+        _env_file=None,
+        diagnosis_model_path=build_model(tmp_path / "gate.onnx", with_gate=True),
+        lesion_model_path=tmp_path / "no.onnx",
+    )
+
+    reply = await diagnose_photo(
+        settings, storage, telegram, 42, "u", "f"  # type: ignore[arg-type]
+    )
+
+    assert reply == NOT_A_LEAF
+    assert telegram.sent == [(42, NOT_A_LEAF)]
+    assert storage.files == {}

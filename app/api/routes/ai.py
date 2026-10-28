@@ -150,7 +150,9 @@ async def diagnose(
         analyze_leaf, leaf, classifier, segmenter, top_k
     )
     diagnosis.location = photo_location(data)
-    if save:
+    # Снимок не похож на лист винограда — в историю он не попадает: там он
+    # выглядел бы как настоящая находка болезни
+    if save and diagnosis.grape_leaf:
         model = await run_in_threadpool(classifier_file, settings)
         diagnosis.id = await save_diagnosis(
             session,

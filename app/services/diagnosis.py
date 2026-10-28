@@ -97,7 +97,9 @@ def analyze_leaf(
         model=classifier.name,
         disease=best.disease,
         confidence=round(best.probability, 4),
-        low_confidence=best.probability < LOW_CONFIDENCE,
+        low_confidence=best.probability < LOW_CONFIDENCE or not result.is_grape_leaf,
+        grape_leaf=result.is_grape_leaf,
+        leaf_score=None if result.leaf_score is None else round(result.leaf_score, 4),
         top=[
             DiseaseProbability(disease=p.disease, probability=round(p.probability, 4))
             for p in result.predictions[:top_k]

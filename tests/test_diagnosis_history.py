@@ -422,3 +422,39 @@ def test_review_rules(client: TestClient) -> None:
         json={"disease": "Не болезнь"},
     )
     assert bad.status_code == 422
+
+
+@pytest.mark.integration
+def test_not_a_grape_leaf_is_not_saved(
+    client: TestClient, storage: MemoryStorage, tmp_path: Path
+) -> None:
+    app: Any = client.app
+    app.state.settings = app.state.settings.model_copy(
+        update={
+            "diagnosis_model_path": build_model(tmp_path / "gate.onnx", with_gate=True)
+        }
+    )
+    app.state.classifier = None
+    headers = login(client)
+
+    def send(color: tuple[int, int, int]) -> dict[str, Any]:
+        response = client.post(
+            "/api/v1/ai/diagnose",
+            headers=headers,
+            params={"save": "true"},
+            files={"image": ("leaf.jpg", photo(color), "image/jpeg")},
+        )
+        body: dict[str, Any] = response.json()
+        return body
+
+    # Отсев тестовой модели: «красный» снимок — не лист винограда
+    other = send((255, 0, 0))
+    leaf = send((0, 200, 0))
+
+    assert other["grape_leaf"] is False
+    assert other["id"] is None
+    assert leaf["grape_leaf"] is True
+    assert leaf["id"] is not None
+    assert len(storage.files) == 1
+    history = client.get("/api/v1/diagnoses", headers=headers).json()
+    assert [item["id"] for item in history["items"]] == [leaf["id"]]

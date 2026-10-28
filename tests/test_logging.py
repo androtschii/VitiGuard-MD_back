@@ -78,7 +78,8 @@ def test_json_lines_for_structlog_and_stdlib(
 def test_httpx_info_is_silenced(test_settings: Settings) -> None:
     configure_logging(test_settings)
 
-    assert not logging.getLogger("httpx").isEnabledFor(logging.INFO)
+    for name in ("httpx", "httpx2"):
+        assert not logging.getLogger(name).isEnabledFor(logging.INFO)
 
 
 def test_local_environment_writes_readable_lines(

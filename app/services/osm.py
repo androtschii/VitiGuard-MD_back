@@ -20,6 +20,8 @@ BATCH = 500
 # Слой для карты: больше полигонов в одном ответе браузер рисует медленно
 MAX_FEATURES = 2000
 NEARBY_M = 1000
+# Дальше ближайший виноградник уже не сосед: расстояние не показывается
+NEAREST_MAX_M = 50_000
 
 
 @dataclass(frozen=True)
@@ -133,11 +135,16 @@ async def vineyard_context(
         .select_from(OsmVineyard)
         .where(geo.ST_DWithin(osm_geo, own_geo, NEARBY_M))
     )
+    # Ближайший — поиском соседей по индексу (ORDER BY <-> LIMIT 1): индекс
+    # отдаёт контуры от ближнего к дальнему и останавливается на первом. Прежний
+    # min() по всем в радиусе 50 км считал расстояние до тысяч контуров (pr-091)
     nearest = await session.scalar(
-        select(func.min(geo.ST_Distance(osm_geo, own_geo))).where(
-            geo.ST_DWithin(osm_geo, own_geo, 50_000)
-        )
+        select(geo.ST_Distance(osm_geo, own_geo))
+        .order_by(osm_geo.op("<->")(own_geo))
+        .limit(1)
     )
+    if nearest is not None and nearest > NEAREST_MAX_M:
+        nearest = None
     return VineyardContext(
         osm_overlap_ratio=round(min(float(covered or 0), 1.0), 4),
         osm_vineyards_within_1km=int(nearby or 0),

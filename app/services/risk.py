@@ -94,7 +94,7 @@ async def refresh_risks(
         )
         for s in weather
     )
-    await _save(session, vineyard, risks, today)
+    await save_risks(session, vineyard, risks, today)
     # Предупреждения о риске на ближайшие дни (pr-080) — с уровня, который
     # выбрал владелец (pr-084); выключены — не создаются
     alert_level = await session.scalar(
@@ -106,7 +106,7 @@ async def refresh_risks(
     return len(risks)
 
 
-async def _save(
+async def save_risks(
     session: AsyncSession, vineyard: Vineyard, risks: Sequence[RiskDay], today: date
 ) -> None:
     if not risks:

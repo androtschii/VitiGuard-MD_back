@@ -101,3 +101,6 @@ dev = [
     "types-openpyxl>=3.1.5.20261017",
     "types-reportlab>=5.0.0.20261008",
 ]
+load = [
+    "locust>=2.37",
+]

@@ -236,10 +236,24 @@ def test_treatments_api(api_client: TestClient, run_sql: RunSql) -> None:
             "applied_on": today.isoformat(),
             "fungicide": "contact",
             "product": "Купроксат",
+            "waiting_days": 21,
         },
     )
     assert created.status_code == 201
     assert created.json()["product"] == "Купроксат"
+    assert created.json()["waiting_days"] == 21
+    # Срок ожидания с этикетки не бывает отрицательным или больше года
+    for wrong in (-1, 366):
+        rejected = api_client.post(
+            url,
+            headers=headers,
+            json={
+                "applied_on": today.isoformat(),
+                "fungicide": "contact",
+                "waiting_days": wrong,
+            },
+        )
+        assert rejected.status_code == 422
     after = api_client.get(f"{url}/plan", headers=headers).json()
     assert after["recommendations"] == []
     assert (

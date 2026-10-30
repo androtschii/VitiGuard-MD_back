@@ -21,6 +21,13 @@ class TreatmentCreate(RequestSchema):
         examples=["Ридомил Голд"],
         description="Название препарата для журнала, в расчёт не входит",
     )
+    waiting_days: int | None = Field(
+        default=None,
+        ge=0,
+        le=365,
+        examples=[21],
+        description="Срок ожидания до сбора урожая с этикетки препарата, дней",
+    )
 
 
 class TreatmentRead(EntityResponse):
@@ -30,6 +37,7 @@ class TreatmentRead(EntityResponse):
     applied_on: date
     fungicide: Fungicide
     product: str | None
+    waiting_days: int | None
 
 
 class RecommendationRead(ResponseSchema):

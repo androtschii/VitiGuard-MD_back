@@ -67,6 +67,10 @@ TAGS = [
         "name": "weather-events",
         "description": "Заморозки, град и другие погодные беды на участке.",
     },
+    {
+        "name": "harvests",
+        "description": "Прогноз и фактический урожай участка по сезонам.",
+    },
     {"name": "alerts", "description": "Предупреждения о высоком риске болезней."},
     {"name": "weather", "description": "Текущая погода на участке (Open-Meteo)."},
     {"name": "tiles", "description": "Тайлы XYZ картограмм NDVI для карты."},

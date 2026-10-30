@@ -3,6 +3,7 @@ from app.models.auth import PasswordResetToken, RefreshToken
 from app.models.diagnosis import DiseaseResult, LeafImage
 from app.models.enums import Disease, Fungicide, ProcessingStatus, RiskLevel
 from app.models.field_note import FieldNote
+from app.models.harvest import HarvestRecord
 from app.models.osm import OsmVineyard
 from app.models.phenology import PhenologyObservation
 from app.models.region import District
@@ -23,6 +24,7 @@ __all__ = [
     "District",
     "FieldNote",
     "Fungicide",
+    "HarvestRecord",
     "IndexType",
     "LeafImage",
     "OsmVineyard",

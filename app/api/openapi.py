@@ -59,6 +59,10 @@ TAGS = [
         "name": "field-notes",
         "description": "Заметки с обходов участка: текст, фото и точка.",
     },
+    {
+        "name": "phenology",
+        "description": "Фазы развития лозы на участке по шкале Эйхгорна–Ленца.",
+    },
     {"name": "alerts", "description": "Предупреждения о высоком риске болезней."},
     {"name": "weather", "description": "Текущая погода на участке (Open-Meteo)."},
     {"name": "tiles", "description": "Тайлы XYZ картограмм NDVI для карты."},

@@ -10,6 +10,7 @@ from app.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 if TYPE_CHECKING:
     from app.models.diagnosis import LeafImage
     from app.models.field_note import FieldNote
+    from app.models.phenology import PhenologyObservation
     from app.models.satellite import SatelliteScan
     from app.models.treatment import Treatment
     from app.models.user import User
@@ -60,5 +61,8 @@ class Vineyard(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="vineyard", cascade="all, delete-orphan", passive_deletes=True
     )
     field_notes: Mapped[list["FieldNote"]] = relationship(
+        back_populates="vineyard", cascade="all, delete-orphan", passive_deletes=True
+    )
+    phenology: Mapped[list["PhenologyObservation"]] = relationship(
         back_populates="vineyard", cascade="all, delete-orphan", passive_deletes=True
     )

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from app.models.user import User
     from app.models.variety import Variety
     from app.models.weather import DiseaseRisk, WeatherData
+    from app.models.weather_event import WeatherEvent
 
 
 class Vineyard(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -64,5 +65,8 @@ class Vineyard(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="vineyard", cascade="all, delete-orphan", passive_deletes=True
     )
     phenology: Mapped[list["PhenologyObservation"]] = relationship(
+        back_populates="vineyard", cascade="all, delete-orphan", passive_deletes=True
+    )
+    weather_events: Mapped[list["WeatherEvent"]] = relationship(
         back_populates="vineyard", cascade="all, delete-orphan", passive_deletes=True
     )

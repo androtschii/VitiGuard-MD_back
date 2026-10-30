@@ -63,6 +63,10 @@ TAGS = [
         "name": "phenology",
         "description": "Фазы развития лозы на участке по шкале Эйхгорна–Ленца.",
     },
+    {
+        "name": "weather-events",
+        "description": "Заморозки, град и другие погодные беды на участке.",
+    },
     {"name": "alerts", "description": "Предупреждения о высоком риске болезней."},
     {"name": "weather", "description": "Текущая погода на участке (Open-Meteo)."},
     {"name": "tiles", "description": "Тайлы XYZ картограмм NDVI для карты."},

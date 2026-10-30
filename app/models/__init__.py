@@ -12,6 +12,7 @@ from app.models.user import User, UserRole
 from app.models.variety import BerryColor, Susceptibility, Variety
 from app.models.vineyard import Vineyard
 from app.models.weather import DiseaseRisk, WeatherData
+from app.models.weather_event import WeatherEvent
 
 __all__ = [
     "Alert",
@@ -39,4 +40,5 @@ __all__ = [
     "VegetationIndex",
     "Vineyard",
     "WeatherData",
+    "WeatherEvent",
 ]

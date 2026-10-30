@@ -20,6 +20,7 @@ from app.api.routes import (
     varieties,
     vineyards,
     weather,
+    weather_events,
     ws,
 )
 
@@ -36,6 +37,7 @@ api_router.include_router(risks.today_router)
 api_router.include_router(treatments.router)
 api_router.include_router(field_notes.router)
 api_router.include_router(phenology.router)
+api_router.include_router(weather_events.router)
 api_router.include_router(telegram.router)
 api_router.include_router(reports.router)
 api_router.include_router(admin.router)

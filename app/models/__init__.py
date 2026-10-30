@@ -2,6 +2,7 @@ from app.models.alert import Alert
 from app.models.auth import PasswordResetToken, RefreshToken
 from app.models.diagnosis import DiseaseResult, LeafImage
 from app.models.enums import Disease, Fungicide, ProcessingStatus, RiskLevel
+from app.models.field_note import FieldNote
 from app.models.osm import OsmVineyard
 from app.models.region import District
 from app.models.satellite import IndexType, SatelliteScan, VegetationIndex
@@ -18,6 +19,7 @@ __all__ = [
     "DiseaseResult",
     "DiseaseRisk",
     "District",
+    "FieldNote",
     "Fungicide",
     "IndexType",
     "LeafImage",

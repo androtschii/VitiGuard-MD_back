@@ -3,10 +3,19 @@ from datetime import UTC, date, datetime, time
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
+from sqlalchemy import select
 
-from app.api.deps import CacheDep, CurrentUserDep, PageParamsDep, SessionDep
+from app.api.deps import (
+    CacheDep,
+    CurrentUserDep,
+    PageParamsDep,
+    SessionDep,
+    StorageDep,
+)
 from app.core.errors import BadRequestError
 from app.integrations.cache import ndvi_tiles_version
+from app.models.field_note import FieldNote
 from app.models.satellite import IndexType
 from app.repositories.vineyard import VineyardRepository, VineyardView
 from app.schemas.errors import ErrorResponse
@@ -268,13 +277,25 @@ async def update_vineyard(
     responses={status.HTTP_404_NOT_FOUND: {"model": ErrorResponse}},
 )
 async def delete_vineyard(
-    vineyard_id: uuid.UUID, user: CurrentUserDep, session: SessionDep, cache: CacheDep
+    vineyard_id: uuid.UUID,
+    user: CurrentUserDep,
+    session: SessionDep,
+    cache: CacheDep,
+    storage: StorageDep,
 ) -> None:
     repository = VineyardRepository(session)
     vineyard = (await repository.get_for_owner(user.id, vineyard_id)).vineyard
+    note_photos = await session.scalars(
+        select(FieldNote.photo_key).where(
+            FieldNote.vineyard_id == vineyard_id, FieldNote.photo_key.is_not(None)
+        )
+    )
+    keys = [key for key in note_photos if key]
     # Снимки, погода и риски участка удаляются каскадом, фото листьев остаются
     await repository.delete(vineyard)
     await session.commit()
+    for key in keys:
+        await run_in_threadpool(storage.delete, key)
     await cache.bump(ndvi_tiles_version(user.id))
 
 

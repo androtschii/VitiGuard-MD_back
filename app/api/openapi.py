@@ -55,6 +55,10 @@ TAGS = [
         "name": "treatments",
         "description": "Журнал обработок участка и план: до какого дня участок защищён и что делать.",
     },
+    {
+        "name": "field-notes",
+        "description": "Заметки с обходов участка: текст, фото и точка.",
+    },
     {"name": "alerts", "description": "Предупреждения о высоком риске болезней."},
     {"name": "weather", "description": "Текущая погода на участке (Open-Meteo)."},
     {"name": "tiles", "description": "Тайлы XYZ картограмм NDVI для карты."},

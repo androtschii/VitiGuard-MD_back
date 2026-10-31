@@ -41,7 +41,12 @@ from app.models.weather import DiseaseRisk
 from app.repositories.vineyard import VineyardView
 from app.services.anomaly import Anomaly, vineyard_anomalies
 from app.services.risk import LEVEL_ORDER, season_year
-from app.services.treatments import Action, Plan, vineyard_plan
+from app.services.treatments import (
+    Action,
+    Plan,
+    harvest_allowed_from,
+    vineyard_plan,
+)
 from app.services.vegetation_history import vegetation_history
 
 FONTS = Path(__file__).resolve().parent.parent / "assets" / "fonts"
@@ -386,6 +391,9 @@ def render_report(data: ReportData) -> bytes:
         story.append(Paragraph("Аномалий NDVI не найдено.", TEXT))
 
     story.append(Paragraph("Обработки", HEADING))
+    harvest_from = harvest_allowed_from(data.treatments, data.today)
+    if harvest_from is not None:
+        story.append(Paragraph(f"Сбор урожая — не раньше {_date(harvest_from)}.", TEXT))
     if data.treatments:
         rows = [["Дата", "Тип препарата", "Препарат"]]
         rows += [

@@ -4,6 +4,7 @@ import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from redis.asyncio.client import PubSub
+from redis.exceptions import RedisError
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -45,9 +46,16 @@ async def forward(
     sessions: async_sessionmaker[AsyncSession],
     user_id: uuid.UUID,
 ) -> None:
-    async for message in pubsub.listen():
-        if message["type"] == "message":
-            await websocket.send_json({"unread": await unread(sessions, user_id)})
+    try:
+        async for message in pubsub.listen():
+            if message["type"] == "message":
+                await websocket.send_json({"unread": await unread(sessions, user_id)})
+    except WebSocketDisconnect:
+        return
+    except (RedisError, OSError):
+        # Сокет без подписки молчал бы вечно: закрытый клиент подключится заново,
+        # а пока соединения нет, значок обновляется опросом
+        await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
 
 
 @router.websocket("/alerts")
@@ -63,7 +71,10 @@ async def alerts_socket(websocket: WebSocket, token: str = "") -> None:
     sessions = websocket.app.state.session_factory
     notifier: RedisNotifier = websocket.app.state.notifier
     async with notifier.subscribe(user_id) as pubsub:
-        await websocket.send_json({"unread": await unread(sessions, user_id)})
+        try:
+            await websocket.send_json({"unread": await unread(sessions, user_id)})
+        except WebSocketDisconnect:
+            return
         sender = asyncio.create_task(forward(websocket, pubsub, sessions, user_id))
         try:
             # Клиент ничего не присылает; чтение нужно, чтобы заметить отключение

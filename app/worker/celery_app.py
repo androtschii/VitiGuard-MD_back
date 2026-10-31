@@ -1,6 +1,7 @@
 from typing import Any
 
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import setup_logging
 
 from app.core.config import Settings, get_settings
@@ -51,6 +52,12 @@ def create_celery(settings: Settings) -> Celery:
             "risk-refresh": {
                 "task": "risk.refresh_all",
                 "schedule": settings.risk_refresh_hours * 3600,
+            },
+            # Очистка временных файлов и устаревших записей (pr-097): в 1:30 UTC,
+            # ночью в Молдове, когда участками никто не занимается
+            "cleanup": {
+                "task": "system.cleanup",
+                "schedule": crontab(hour=1, minute=30),
             },
         },
         # Redis возвращает неподтверждённую задачу в очередь по истечении этого

@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uuid
 from collections.abc import Callable, Iterator
 
@@ -75,6 +76,9 @@ def test_unread_count_in_real_time(
         # Сразу после подключения — текущее число
         assert socket.receive_json() == {"unread": 0}
 
+        # Подписка переживает паузу дольше таймаута обычных запросов к Redis
+        time.sleep(1)
+
         # Пересчёт риска создал предупреждение и подал сигнал
         run_sql(
             "INSERT INTO alerts (user_id, vineyard_id, disease, day, level)"
@@ -116,9 +120,8 @@ def test_socket_rejects_deleted_user(client: TestClient, run_sql: RunSql) -> Non
 
 async def test_notifier_survives_unavailable_redis() -> None:
     # Порт, где Redis нет: сигнал теряется, но ошибки нет
-    notifier = RedisNotifier(
-        Redis.from_url("redis://127.0.0.1:1/0", socket_connect_timeout=0.2)
-    )
+    client = Redis.from_url("redis://127.0.0.1:1/0", socket_connect_timeout=0.2)
+    notifier = RedisNotifier(client, client)
 
     await notifier.alerts_changed(uuid.uuid4())
     await notifier.close()

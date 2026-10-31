@@ -55,6 +55,22 @@ TAGS = [
         "name": "treatments",
         "description": "Журнал обработок участка и план: до какого дня участок защищён и что делать.",
     },
+    {
+        "name": "field-notes",
+        "description": "Заметки с обходов участка: текст, фото и точка.",
+    },
+    {
+        "name": "phenology",
+        "description": "Фазы развития лозы на участке по шкале Эйхгорна–Ленца.",
+    },
+    {
+        "name": "weather-events",
+        "description": "Заморозки, град и другие погодные беды на участке.",
+    },
+    {
+        "name": "harvests",
+        "description": "Прогноз и фактический урожай участка по сезонам.",
+    },
     {"name": "alerts", "description": "Предупреждения о высоком риске болезней."},
     {"name": "weather", "description": "Текущая погода на участке (Open-Meteo)."},
     {"name": "tiles", "description": "Тайлы XYZ картограмм NDVI для карты."},

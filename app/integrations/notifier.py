@@ -26,17 +26,24 @@ class RedisNotifier:
     Redis связывает их. В сообщении нет данных — только повод перечитать
     число непрочитанных из базы, поэтому потерянный сигнал ничего не ломает."""
 
-    def __init__(self, client: Redis) -> None:
+    def __init__(self, client: Redis, subscriber: Redis) -> None:
         self.client = client
+        self.subscriber = subscriber
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "RedisNotifier":
+        # Подписка большую часть времени молчит, поэтому таймаут чтения ей
+        # не нужен: с ним она обрывалась бы после первой же паузы
         return cls(
             Redis.from_url(
                 str(settings.cache_url),
                 socket_timeout=0.5,
                 socket_connect_timeout=0.5,
-            )
+            ),
+            Redis.from_url(
+                str(settings.cache_url),
+                socket_connect_timeout=0.5,
+            ),
         )
 
     async def alerts_changed(self, user_id: uuid.UUID) -> None:
@@ -49,7 +56,7 @@ class RedisNotifier:
 
     @asynccontextmanager
     async def subscribe(self, user_id: uuid.UUID) -> AsyncIterator[PubSub]:
-        pubsub = self.client.pubsub()
+        pubsub = self.subscriber.pubsub()
         await pubsub.subscribe(alerts_channel(user_id))
         try:
             yield pubsub
@@ -60,3 +67,4 @@ class RedisNotifier:
 
     async def close(self) -> None:
         await self.client.aclose()
+        await self.subscriber.aclose()

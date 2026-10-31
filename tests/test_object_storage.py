@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -92,3 +94,30 @@ def test_delete_removes_object() -> None:
     store.delete("u/1.jpg")
 
     client.remove_object.assert_called_once_with("leaf-images", "u/1.jpg")
+
+
+def test_purge_removes_old_files_under_prefix() -> None:
+    store, client = storage()
+    now = datetime(2026, 10, 29, tzinfo=UTC)
+    client.list_objects.return_value = [
+        SimpleNamespace(
+            object_name="jobs/u/old.jpg", last_modified=now - timedelta(days=2)
+        ),
+        SimpleNamespace(object_name="jobs/u/new.jpg", last_modified=now),
+        SimpleNamespace(object_name="jobs/u/", last_modified=None),
+    ]
+
+    assert store.purge("jobs/", now - timedelta(days=1)) == 1
+
+    client.list_objects.assert_called_once_with(
+        "leaf-images", prefix="jobs/", recursive=True
+    )
+    client.remove_object.assert_called_once_with("leaf-images", "jobs/u/old.jpg")
+
+
+def test_purge_with_unavailable_storage() -> None:
+    store, client = storage()
+    client.list_objects.side_effect = Denied()
+
+    with pytest.raises(ExternalServiceError):
+        store.purge("jobs/", datetime(2026, 10, 29, tzinfo=UTC))

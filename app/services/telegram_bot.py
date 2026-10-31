@@ -26,6 +26,14 @@ from app.models.alert import Alert
 from app.models.enums import Disease, RiskLevel
 from app.models.user import User
 from app.models.vineyard import Vineyard
+from app.services.wine_guide import (
+    BUY_TEXT,
+    LOCATION_KEYBOARD,
+    SPRAY_TEXT,
+    WINE_TEXT,
+    guide_reply,
+    nearest_text,
+)
 
 LINK_TTL_SECONDS = 15 * 60
 DIAGNOSE_PHOTO = "telegram.diagnose_photo"
@@ -68,6 +76,9 @@ COMMANDS = [
     ("start", "Начало и ссылка на приложение"),
     ("photo", "Как проверить лист по фото"),
     ("alerts", "Предупреждения о риске по участкам"),
+    ("spray", "Чем обрабатывать виноград"),
+    ("wine", "Какое вино выбрать"),
+    ("buy", "Где купить вино рядом"),
     ("app", "Открыть VitiGuard MD на телефоне"),
     ("help", "Что умеет бот"),
 ]
@@ -135,6 +146,13 @@ class Document(BaseModel):
     mime_type: str | None = None
 
 
+class Location(BaseModel):
+    """Точка, которую пользователь отправил кнопкой."""
+
+    latitude: float
+    longitude: float
+
+
 class Message(BaseModel):
     """Сообщение Telegram из обновления бота: текст, фото или документ."""
 
@@ -144,6 +162,7 @@ class Message(BaseModel):
     photo: list[PhotoSize] = []
     # Фото, отправленное файлом: без сжатия и с EXIF, где бывают координаты
     document: Document | None = None
+    location: Location | None = None
 
 
 class CallbackQuery(BaseModel):
@@ -262,6 +281,28 @@ async def handle_update(
         return
     if text == "/help":
         await telegram.send_message(chat_id, f"{HELP}\n\n{WELCOME}", keyboard)
+        return
+    # Подсказки про обработки и вино не требуют учётной записи
+    if text == "/spray":
+        await telegram.send_message(chat_id, SPRAY_TEXT)
+        return
+    if text == "/wine":
+        await telegram.send_message(chat_id, WINE_TEXT)
+        return
+    if text == "/buy":
+        await telegram.send_message(chat_id, BUY_TEXT, LOCATION_KEYBOARD)
+        return
+    if message.location is not None:
+        await telegram.send_message(
+            chat_id,
+            nearest_text(message.location.latitude, message.location.longitude),
+        )
+        return
+    answer = guide_reply(text) if text else None
+    if answer is not None:
+        await telegram.send_message(
+            chat_id, answer, LOCATION_KEYBOARD if answer == BUY_TEXT else None
+        )
         return
 
     owner = await session.scalar(

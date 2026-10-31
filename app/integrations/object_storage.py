@@ -1,4 +1,5 @@
 import io
+from datetime import datetime
 from typing import Protocol
 
 from minio import Minio
@@ -19,6 +20,8 @@ class Storage(Protocol):
     def get(self, key: str) -> bytes: ...
 
     def delete(self, key: str) -> None: ...
+
+    def purge(self, prefix: str, before: datetime) -> int: ...
 
 
 class ObjectStorage:
@@ -76,3 +79,21 @@ class ObjectStorage:
             self.client.remove_object(self.bucket, key)
         except (MinioException, HTTPError) as error:
             raise ExternalServiceError(UNAVAILABLE) from error
+
+    def purge(self, prefix: str, before: datetime) -> int:
+        """Удаляет файлы с ключом на prefix, изменённые раньше before."""
+        try:
+            old = [
+                item.object_name
+                for item in self.client.list_objects(
+                    self.bucket, prefix=prefix, recursive=True
+                )
+                if item.object_name
+                and item.last_modified is not None
+                and item.last_modified < before
+            ]
+            for key in old:
+                self.client.remove_object(self.bucket, key)
+        except (MinioException, HTTPError) as error:
+            raise ExternalServiceError(UNAVAILABLE) from error
+        return len(old)

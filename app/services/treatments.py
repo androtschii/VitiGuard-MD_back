@@ -267,3 +267,15 @@ async def vineyard_plan(
         treatments.all(),
         daily_weather(HourlyWeather(*row) for row in hours),
     )
+
+
+def harvest_allowed_from(items: Sequence[Treatment], today: date) -> date | None:
+    """С какого дня можно начинать сбор: самый поздний срок ожидания по журналу.
+    Дата не позже сегодняшней ничего не ограничивает."""
+    dates = [
+        item.applied_on + timedelta(days=item.waiting_days)
+        for item in items
+        if item.waiting_days is not None
+    ]
+    latest = max(dates, default=None)
+    return latest if latest is not None and latest > today else None

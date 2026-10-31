@@ -1,9 +1,13 @@
 .git
-.venv
 .env
+**/.venv
 **/__pycache__
-.pytest_cache
-.mypy_cache
-.ruff_cache
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
 docs
 tests
+loadtests
+# Обучение моделей — отдельный проект со своим окружением; серверу нужны
+# только готовые веса из models/
+ml

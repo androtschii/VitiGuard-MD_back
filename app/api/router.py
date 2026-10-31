@@ -6,8 +6,11 @@ from app.api.routes import (
     alerts,
     auth,
     diagnoses,
+    field_notes,
+    harvests,
     info,
     osm,
+    phenology,
     regions,
     reports,
     risks,
@@ -18,6 +21,7 @@ from app.api.routes import (
     varieties,
     vineyards,
     weather,
+    weather_events,
     ws,
 )
 
@@ -32,6 +36,10 @@ api_router.include_router(regions.router)
 api_router.include_router(risks.router)
 api_router.include_router(risks.today_router)
 api_router.include_router(treatments.router)
+api_router.include_router(field_notes.router)
+api_router.include_router(phenology.router)
+api_router.include_router(harvests.router)
+api_router.include_router(weather_events.router)
 api_router.include_router(telegram.router)
 api_router.include_router(reports.router)
 api_router.include_router(admin.router)

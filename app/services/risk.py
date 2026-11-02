@@ -44,6 +44,11 @@ def season_year(today: date) -> int:
     return today.year if today.month >= 3 else today.year - 1
 
 
+def season_start(today: date) -> datetime:
+    """Начало погоды сезона в базе: 1 марта по местному времени."""
+    return datetime(season_year(today), 3, 1, tzinfo=LOCAL_TZ)
+
+
 def merge_weather(
     archive: Sequence[WeatherSample], recent: Sequence[WeatherSample]
 ) -> list[WeatherSample]:

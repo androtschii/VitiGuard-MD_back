@@ -71,6 +71,10 @@ TAGS = [
         "name": "harvests",
         "description": "Прогноз и фактический урожай участка по сезонам.",
     },
+    {
+        "name": "push",
+        "description": "Подписка браузера на push-уведомления (Web Push, VAPID).",
+    },
     {"name": "alerts", "description": "Предупреждения о высоком риске болезней."},
     {"name": "weather", "description": "Текущая погода на участке (Open-Meteo)."},
     {"name": "tiles", "description": "Тайлы XYZ картограмм NDVI для карты."},

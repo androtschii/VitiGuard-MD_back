@@ -37,6 +37,8 @@ class Alert(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Когда предупреждение ушло в Telegram (pr-083); NULL — ещё не отправлено.
     # Рост уровня сбрасывает отметку: об усилении риска сообщается снова
     notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # То же для push-уведомлений браузера (pr-081): у каналов свои отметки
+    pushed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped["User"] = relationship()
     vineyard: Mapped["Vineyard"] = relationship()

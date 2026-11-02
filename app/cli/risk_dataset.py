@@ -19,14 +19,7 @@ import httpx2 as httpx
 from app.core.config import Settings
 from app.core.errors import ExternalServiceError
 from app.integrations.open_meteo import OpenMeteoClient, WeatherSample
-from app.services.agromodels import (
-    HourlyWeather,
-    daily_weather,
-    degree_days,
-    goidanich,
-    gubler_thomas,
-    three_tens,
-)
+from app.services.agromodels import HourlyWeather, label_days
 
 
 @dataclass(frozen=True)
@@ -72,45 +65,10 @@ COLUMNS = (
 
 
 def label_rows(point: Point, hours: list[HourlyWeather]) -> list[dict[str, object]]:
-    days = daily_weather(hours)
-    gdd = degree_days(days)
-    tens = {risk.day: risk for risk in three_tens(days)}
-    infections = [day for day, risk in tens.items() if risk.score == 1]
-    incubation = {risk.day: risk for risk in goidanich(days, infections)}
-    powdery = {risk.day: risk for risk in gubler_thomas(days)}
-    rows = []
-    for day in days:
-        tens_risk = tens.get(day.day)
-        incubation_risk = incubation.get(day.day)
-        powdery_risk = powdery.get(day.day)
-        rows.append(
-            {
-                "point": point.name,
-                "region": point.region,
-                "date": day.day.isoformat(),
-                "mean_temp": day.mean_temp,
-                "min_temp": day.min_temp,
-                "max_temp": day.max_temp,
-                "precipitation_mm": day.precipitation_mm,
-                "mean_humidity": day.mean_humidity,
-                "mild_hours": day.longest_mild_run,
-                "hours_above_35": day.hours_above_35,
-                "degree_days": gdd[day.day],
-                "three_tens": int(tens_risk.score) if tens_risk else "",
-                "goidanich_progress": (
-                    incubation_risk.score if incubation_risk else ""
-                ),
-                "symptoms_expected": (
-                    int(bool(incubation_risk.factors.get("symptoms_expected")))
-                    if incubation_risk
-                    else ""
-                ),
-                "gubler_thomas": (
-                    powdery_risk.factors["index"] if powdery_risk else ""
-                ),
-            }
-        )
-    return rows
+    return [
+        {"point": point.name, "region": point.region, **row}
+        for row in label_days(hours)
+    ]
 
 
 async def history_with_retry(

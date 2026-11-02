@@ -6,6 +6,7 @@ from app.models.field_note import FieldNote
 from app.models.harvest import HarvestRecord
 from app.models.osm import OsmVineyard
 from app.models.phenology import PhenologyObservation
+from app.models.push_subscription import PushSubscription
 from app.models.region import District
 from app.models.satellite import IndexType, SatelliteScan, VegetationIndex
 from app.models.treatment import Treatment
@@ -31,6 +32,7 @@ __all__ = [
     "PasswordResetToken",
     "PhenologyObservation",
     "ProcessingStatus",
+    "PushSubscription",
     "RefreshToken",
     "RiskLevel",
     "SatelliteScan",

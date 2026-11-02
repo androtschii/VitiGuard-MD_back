@@ -102,6 +102,12 @@ class Settings(BaseSettings):
     # ссылка для телефона. Telegram принимает в кнопках только https, а
     # 127.0.0.1 с телефона недоступен — без адреса бот кнопок не показывает
     telegram_webapp_url: str | None = None
+
+    # Web Push (pr-081): пара ключей VAPID и контакт администратора для
+    # push-сервисов. Без ключей push выключен, остальное работает
+    vapid_public_key: str | None = None
+    vapid_private_key: SecretStr | None = None
+    vapid_subject: str = "mailto:admin@vitiguard.md"
     # Снимки с облачностью сцены выше порога (в процентах) не берутся
     max_scene_cloud_cover: float = Field(default=10, ge=0, le=100)
     # Для расчёта индексов отсев по облачности сцены мягче: облака над самим
@@ -116,6 +122,8 @@ class Settings(BaseSettings):
     diagnosis_model_path: Path = Path("models/diagnosis.onnx")
     # Сегментация поражения (U-Net, ml/pr-013); без неё диагноз ставится без маски
     lesion_model_path: Path = Path("models/lesion.onnx")
+    # Уточнение риска милдью на следующий день (pr-076); без файла выключено
+    risk_model_path: Path = Path("models/risk.onnx")
     # S3-совместимое хранилище фото листов (pr-039): RustFS в Docker Compose.
     # Ключи по умолчанию — только для локальной разработки
     s3_endpoint: str = "127.0.0.1:9000"

@@ -322,3 +322,45 @@ def season_risks(
     tens = three_tens(days, shoots_ready_from)
     infections = [risk.day for risk in tens if risk.score == 1]
     return [*tens, *goidanich(days, infections), *gubler_thomas(days)]
+
+
+def label_days(hours: Iterable[HourlyWeather]) -> list[dict[str, object]]:
+    """Сутки со сводкой погоды и состоянием трёх моделей — строки набора данных
+    прогноза риска (ml/pr-014). Пусто — день вне окна модели."""
+    days = daily_weather(hours)
+    gdd = degree_days(days)
+    tens = {risk.day: risk for risk in three_tens(days)}
+    infections = [day for day, risk in tens.items() if risk.score == 1]
+    incubation = {risk.day: risk for risk in goidanich(days, infections)}
+    powdery = {risk.day: risk for risk in gubler_thomas(days)}
+    rows: list[dict[str, object]] = []
+    for day in days:
+        tens_risk = tens.get(day.day)
+        incubation_risk = incubation.get(day.day)
+        powdery_risk = powdery.get(day.day)
+        rows.append(
+            {
+                "date": day.day.isoformat(),
+                "mean_temp": day.mean_temp,
+                "min_temp": day.min_temp,
+                "max_temp": day.max_temp,
+                "precipitation_mm": day.precipitation_mm,
+                "mean_humidity": day.mean_humidity,
+                "mild_hours": day.longest_mild_run,
+                "hours_above_35": day.hours_above_35,
+                "degree_days": gdd[day.day],
+                "three_tens": int(tens_risk.score) if tens_risk else "",
+                "goidanich_progress": (
+                    incubation_risk.score if incubation_risk else ""
+                ),
+                "symptoms_expected": (
+                    int(bool(incubation_risk.factors.get("symptoms_expected")))
+                    if incubation_risk
+                    else ""
+                ),
+                "gubler_thomas": (
+                    powdery_risk.factors["index"] if powdery_risk else ""
+                ),
+            }
+        )
+    return rows

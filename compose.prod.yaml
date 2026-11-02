@@ -1,0 +1,64 @@
+# Сервер (pr-100): накладывается поверх compose.yaml —
+#   docker compose -f compose.yaml -f compose.prod.yaml up -d --build
+# Наружу открыт только web (Caddy, 80 и 443): он отдаёт собранный сайт,
+# проксирует /api на API и сам получает сертификат Let's Encrypt. База, Redis,
+# хранилище и почта доступны только внутри сети Docker.
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  api:
+    <<: *restart
+    ports: !reset []
+    environment:
+      VITIGUARD_ENVIRONMENT: production
+
+  worker:
+    <<: *restart
+    environment:
+      VITIGUARD_ENVIRONMENT: production
+
+  beat:
+    <<: *restart
+    environment:
+      VITIGUARD_ENVIRONMENT: production
+
+  db:
+    <<: *restart
+    # PostGIS для ARM и amd64 (docker/db/Dockerfile)
+    image: vitiguard-db:18-postgis
+    build: docker/db
+    ports: !reset []
+
+  storage:
+    <<: *restart
+    ports: !reset []
+
+  redis:
+    <<: *restart
+    ports: !reset []
+
+  mailpit:
+    <<: *restart
+    ports: !reset []
+
+  web:
+    <<: *restart
+    build: ../VitiGuard-MD_front
+    environment:
+      # Домен сайта: Caddy получает на него сертификат
+      SITE_ADDRESS: ${SITE_ADDRESS:?нужен адрес сайта, например 1-2-3-4.sslip.io}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

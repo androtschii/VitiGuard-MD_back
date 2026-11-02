@@ -1,0 +1,9 @@
+[Unit]
+Description=VitiGuard MD: проверка обновлений раз в 10 минут
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

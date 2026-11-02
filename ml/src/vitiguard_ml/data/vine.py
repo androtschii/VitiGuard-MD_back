@@ -3,6 +3,7 @@
 Источники с открытыми лицензиями, рамки объектов:
 - INESC TEC «Grape bunch and vine trunk dataset» (Aguiar, Magalhães, Zenodo,
   DOI 10.5281/zenodo.5114141, CC BY 4.0): стволы и грозди, Pascal VOC;
+- вторая камера того же архива INESC (кадры rotated_left): только стволы;
 - Embrapa WGISD (CC BY-NC 4.0, ml/pr-022): грозди, YOLO.
 
 В архиве INESC рядом с кадрами лежат их искусственные копии (поворот,
@@ -10,6 +11,11 @@
 и в проверку. Тепловизионные кадры тоже не берутся — это другая камера.
 Кадры INESC идут подряд из видео, поэтому выборки делятся блоками соседних
 кадров, а не случайно.
+
+Источники добавляются по одному: сборка дописывает в готовый набор только
+те, которых нет в sources.json, а уже собранные кадры не трогает. Тестовая
+выборка остаётся той, на которой сравнивались прежние версии модели, поэтому
+кадры источников, добавленных позже, идут только в обучение и проверку.
 
 Запуск из каталога ml:  uv run python -m vitiguard_ml.data.vine
 """
@@ -20,6 +26,7 @@ import re
 import shutil
 import xml.etree.ElementTree as ET
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 
 from vitiguard_ml.data.wgisd import download as download_wgisd
@@ -36,8 +43,11 @@ INESC_CLASSES = {
 }
 AUGMENTED = re.compile(
     r"^(multiply|multiplyrandom|flip|angle-?\d+|scale\d+|translaterandom|"
-    r"noiserandom|huesatur|randomcombination\d+|rotated)_"
+    r"noiserandom|huesatur|randomcombination\d+)_"
 )
+# Съёмка второй камерой 640×480 в том же архиве INESC: это исходные кадры, а не
+# повёрнутые копии, только стволы. Добавлена после первой версии модели
+SECOND_CAMERA = re.compile(r"^rotated_left\d+$")
 BLOCK = 50
 INESC_ARCHIVE = "inesc/grape_trunk_dataset.zip"
 
@@ -91,19 +101,43 @@ def block_split(names: list[str]) -> dict[str, str]:
 
 
 def prepare_inesc(archive: Path, out: Path) -> dict[str, int]:
+    return copy_inesc(archive, out, block_split, second_camera=False)
+
+
+def prepare_inesc_second_camera(archive: Path, out: Path) -> dict[str, int]:
+    """Вторая камера INESC: блоки, которые попали бы в тест, идут в обучение."""
+    return copy_inesc(
+        archive,
+        out,
+        lambda names: {
+            name: "train" if split == "test" else split
+            for name, split in block_split(names).items()
+        },
+        second_camera=True,
+    )
+
+
+def copy_inesc(
+    archive: Path,
+    out: Path,
+    assign: Callable[[list[str]], dict[str, str]],
+    second_camera: bool,
+) -> dict[str, int]:
     counts = {"train": 0, "val": 0, "test": 0}
     with zipfile.ZipFile(archive) as zip_file:
         xmls = {
             Path(name).stem: name
             for name in zip_file.namelist()
-            if name.endswith(".xml") and is_original(Path(name).stem)
+            if name.endswith(".xml")
+            and is_original(Path(name).stem)
+            and bool(SECOND_CAMERA.match(Path(name).stem)) == second_camera
         }
         images = {
             Path(name).stem: name
             for name in zip_file.namelist()
             if name.lower().endswith(".jpg")
         }
-        splits = block_split([name for name in xmls if name in images])
+        splits = assign([name for name in xmls if name in images])
         for name, split in splits.items():
             (out / "images" / split).mkdir(parents=True, exist_ok=True)
             (out / "labels" / split).mkdir(parents=True, exist_ok=True)
@@ -150,14 +184,38 @@ def write_config(out: Path, sources: dict[str, dict[str, int]]) -> None:
     )
 
 
+def read_sources(out: Path) -> dict[str, dict[str, int]]:
+    path = out / "sources.json"
+    if not path.exists():
+        return {}
+    sources: dict[str, dict[str, int]] = json.loads(path.read_text(encoding="utf-8"))
+    return sources
+
+
+# Порядок — порядок добавления: новый источник дописывается в конец
+SOURCES: dict[str, Callable[[Path, Path], dict[str, int]]] = {
+    "inesc": lambda raw, out: prepare_inesc(raw / INESC_ARCHIVE, out),
+    "wgisd": lambda raw, out: prepare_wgisd(download_wgisd(raw), out),
+    "inesc_second_camera": lambda raw, out: prepare_inesc_second_camera(
+        raw / INESC_ARCHIVE, out
+    ),
+}
+
+
+def missing_sources(out: Path) -> list[str]:
+    done = read_sources(out)
+    return [name for name in SOURCES if name not in done]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw", type=Path, default=Path("data/raw"))
     parser.add_argument("--out", type=Path, default=Path("data/processed/vine"))
     args = parser.parse_args()
 
-    sources = {"inesc": prepare_inesc(args.raw / INESC_ARCHIVE, args.out)}
-    sources["wgisd"] = prepare_wgisd(download_wgisd(args.raw), args.out)
+    sources = read_sources(args.out)
+    for name in missing_sources(args.out):
+        sources[name] = SOURCES[name](args.raw, args.out)
     write_config(args.out, sources)
     print(json.dumps(sources, ensure_ascii=False))
 

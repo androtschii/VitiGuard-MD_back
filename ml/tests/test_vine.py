@@ -4,7 +4,16 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from vitiguard_ml.data.vine import block_split, is_original, prepare_inesc, voc_to_yolo
+from vitiguard_ml.data.vine import (
+    SOURCES,
+    block_split,
+    is_original,
+    missing_sources,
+    prepare_inesc,
+    prepare_inesc_second_camera,
+    voc_to_yolo,
+    write_config,
+)
 from vitiguard_ml.robot.vine import accept, best_entry, class_scores
 
 VOC = b"""<annotation><size><width>100</width><height>50</height></size>
@@ -21,6 +30,7 @@ def test_only_original_frames() -> None:
     for copy in ("flip_aveleda0040", "angle-30_aveleda_1", "randomcombination3_left1"):
         assert not is_original(copy)
     assert not is_original("thermal_aveleda098")
+    assert is_original("rotated_left0151")
 
 
 def test_voc_boxes_become_yolo_and_clip_to_frame() -> None:
@@ -56,6 +66,29 @@ def test_prepare_inesc_skips_copies(tmp_path: Path) -> None:
     assert (tmp_path / "out/images/test/inesc_aveleda0000.jpg").read_bytes() == b"jpeg"
     label = (tmp_path / "out/labels/test/inesc_aveleda0000.txt").read_text()
     assert label.startswith("0 ")
+
+
+def test_second_camera_is_a_separate_source_without_test(tmp_path: Path) -> None:
+    archive = tmp_path / "data.zip"
+    with zipfile.ZipFile(archive, "w") as zip_file:
+        for name in ["aveleda0000"] + [f"rotated_left{i:04d}" for i in range(60)]:
+            zip_file.writestr(f"all/{name}.xml", VOC)
+            zip_file.writestr(f"all/{name}.jpg", b"jpeg")
+
+    first = prepare_inesc(archive, tmp_path / "out")
+    second = prepare_inesc_second_camera(archive, tmp_path / "out")
+
+    assert first == {"train": 0, "val": 0, "test": 1}
+    assert second == {"train": 50, "val": 10, "test": 0}
+    assert (tmp_path / "out/images/val/inesc_rotated_left0050.jpg").exists()
+
+
+def test_only_missing_sources_are_built(tmp_path: Path) -> None:
+    assert missing_sources(tmp_path) == list(SOURCES)
+
+    write_config(tmp_path, {"inesc": {"test": 1}, "wgisd": {"test": 1}})
+
+    assert missing_sources(tmp_path) == ["inesc_second_camera"]
 
 
 def test_class_scores_from_ultralytics_metrics() -> None:

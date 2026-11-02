@@ -4,9 +4,10 @@
 
 | Набор | Что размечено | Лицензия | Статус |
 |---|---|---|---|
-| [INESC TEC, Grape bunch and vine trunk dataset](https://doi.org/10.5281/zenodo.5114141) (Aguiar, Magalhães) | стволы, грозди двух размеров; рамки, Pascal VOC; 2577 исходных кадров без искусственных копий и тепловизора | CC BY 4.0 | в обучении |
+| [INESC TEC, Grape bunch and vine trunk dataset](https://doi.org/10.5281/zenodo.5114141) (Aguiar, Magalhães) | стволы, грозди двух размеров; рамки, Pascal VOC; 2476 исходных кадров без искусственных копий и тепловизора | CC BY 4.0 | в обучении |
+| Тот же архив INESC, вторая камера (кадры `rotated_left`) | только стволы: 370 кадров 640×480, 1144 рамки | CC BY 4.0 | в обучении с 3 ноября 2026: 320 кадров в обучение, 50 в проверку, в тест не идут |
 | [Embrapa WGISD](https://github.com/thsant/wgisd) (Santos и др.) | грозди пяти винных сортов; рамки и маски | CC BY-NC 4.0, не для коммерции | в обучении |
-| VineSet, INESC TEC ([статья](https://www.mdpi.com/2077-0472/11/2/131)) | стволы, более 9000 кадров, Pascal VOC | не проверена | найден: страница статьи недоступна, ссылку и лицензию нужно уточнить |
+| [VineSet, INESC TEC](https://doi.org/10.5281/zenodo.5362354) (Santos, Aguiar, Santos) | стволы, 9481 кадр с искусственными копиями, Pascal VOC | CC BY 4.0 | не нужен: 917 исходных кадров побайтно совпадают с кадрами архива INESC выше, рамки те же |
 | [Roboflow Universe, vineyard trunk & foliage](https://universe.roboflow.com/gokila/vineyard-trunk-foliage-detection) | стволы и листва | по описанию CC BY 4.0, не проверена | найден: для скачивания нужен аккаунт Roboflow |
 
 Правила:

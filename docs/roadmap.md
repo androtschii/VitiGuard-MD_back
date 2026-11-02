@@ -157,7 +157,7 @@ pr-073 и pr-074 лучше сделать раньше остального с�
 - [x] ml/pr-008 — Обучение EfficientNet.
 - [x] ml/pr-009 — Обучение Vision Transformer.
 - [x] ml/pr-010 — Сравнение моделей: accuracy, precision, recall, F1, матрица ошибок, скорость, размер; отдельная оценка на полевом наборе.
-- [ ] ml/pr-011 — Объяснимость: Grad-CAM для CNN, attention rollout для ViT.
+- [x] ml/pr-011 — Объяснимость: Grad-CAM для CNN, attention rollout для ViT.
 
 ### Сегментация
 

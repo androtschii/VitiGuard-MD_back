@@ -23,8 +23,9 @@ POLYGON = {
         [[[28.8, 47.0], [28.81, 47.0], [28.81, 47.01], [28.8, 47.01], [28.8, 47.0]]]
     ],
 }
+ENDPOINT = "https://push.example.org/send/abc"
 SUBSCRIPTION = {
-    "endpoint": "https://push.example.org/send/abc",
+    "endpoint": ENDPOINT,
     "keys": {"p256dh": "key", "auth": "secret"},
 }
 RunSql = Callable[[str], list[tuple[object, ...]]]
@@ -75,7 +76,7 @@ def test_subscription_moves_to_new_owner_and_unsubscribes(
         "SELECT u.email, s.p256dh FROM push_subscriptions s JOIN users u ON u.id = s.user_id"
     )
     assert rows == [("other@example.md", "new")]
-    endpoint = {"endpoint": SUBSCRIPTION["endpoint"]}
+    endpoint = {"endpoint": ENDPOINT}
     # Чужую подписку не удалить
     api_client.delete(url, headers=first, params=endpoint)
     assert run_sql("SELECT count(*) FROM push_subscriptions") == [(1,)]
@@ -190,7 +191,7 @@ def test_deliver_maps_push_service_answers(monkeypatch: pytest.MonkeyPatch) -> N
 
         def failing(status: int | None = status, **_: Any) -> None:
             response = SimpleNamespace(status_code=status) if status else None
-            raise WebPushException("нет", response=response)  # type: ignore[arg-type]
+            raise WebPushException("нет", response=response)
 
         monkeypatch.setattr(web_push, "webpush", failing)
         with pytest.raises(PushRejected) as error:

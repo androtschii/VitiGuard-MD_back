@@ -294,9 +294,7 @@ def gubler_thomas(days: Sequence[DailyWeather]) -> list[RiskDay]:
         level = (
             RiskLevel.HIGH
             if index >= 60
-            else RiskLevel.MEDIUM
-            if index > 30
-            else RiskLevel.LOW
+            else RiskLevel.MEDIUM if index > 30 else RiskLevel.LOW
         )
         risks.append(
             RiskDay(

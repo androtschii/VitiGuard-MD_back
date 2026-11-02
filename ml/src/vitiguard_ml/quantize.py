@@ -2,8 +2,14 @@
 
 Модель для телефона скачивается целиком, поэтому её размер важен: статическая
 квантизация в 8 бит уменьшает файл примерно вчетверо. Калибровка — снимки
-проверочной выборки, сверка — тестовая: доля совпавших диагнозов и расхождение
-вероятностей у PyTorch, ONNX (float32) и ONNX (INT8).
+проверочной выборки, сверка — тестовая: точность против разметки и доля
+совпавших диагнозов у PyTorch, ONNX (float32) и ONNX (INT8).
+
+Сжатая копия остаётся, только если её точность ниже полной модели не больше
+чем на MAX_ACCURACY_DROP; иначе файл удаляется, и телефон получает полную
+модель. На EfficientNet-B0 лучший найденный вариант — квантуются только
+свёртки, калибровка по перцентилю: грубое сжатие активаций после SiLU и
+блоков сжатия-возбуждения теряло до 17 % диагнозов.
 
 Запуск из каталога ml, после export_server:
   uv run --group train python -m vitiguard_ml.quantize --model ../models/diagnosis.onnx
@@ -20,6 +26,7 @@ from numpy.typing import NDArray
 from PIL import Image
 
 FloatArray = NDArray[np.float32]
+MAX_ACCURACY_DROP = 0.01
 Preprocess = Callable[[Path], FloatArray]
 
 
@@ -44,6 +51,10 @@ def compare(reference: FloatArray, candidate: FloatArray) -> dict[str, float]:
     }
 
 
+def accuracy(logits: FloatArray, labels: NDArray[np.int_]) -> float:
+    return round(float(np.mean(logits.argmax(axis=1) == labels)), 4)
+
+
 def batches(
     paths: Sequence[Path], preprocess: Preprocess, size: int = 16
 ) -> Iterator[FloatArray]:
@@ -64,9 +75,11 @@ def onnx_logits(model: Path, images: Iterator[FloatArray]) -> FloatArray:
 def quantize_model(
     source: Path, target: Path, calibration: Sequence[Path], preprocess: Preprocess
 ) -> Path:
-    """Статическая квантизация QDQ: веса по каналам в int8, активации в uint8."""
+    """Статическая квантизация QDQ только свёрток: веса по каналам в int8,
+    входы свёрток в uint8 с калибровкой по перцентилю."""
     from onnxruntime.quantization import (
         CalibrationDataReader,
+        CalibrationMethod,
         QuantFormat,
         QuantType,
         quantize_static,
@@ -93,6 +106,8 @@ def quantize_model(
             per_channel=True,
             weight_type=QuantType.QInt8,
             activation_type=QuantType.QUInt8,
+            calibrate_method=CalibrationMethod.Percentile,
+            op_types_to_quantize=["Conv"],
         )
     finally:
         prepared.unlink(missing_ok=True)
@@ -142,10 +157,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         val[i].path
         for i in rng.choice(len(val), min(args.calibration, len(val)), replace=False)
     ]
-    checked = [
-        test[i].path
-        for i in rng.choice(len(test), min(args.check, len(test)), replace=False)
-    ]
+    picked = rng.choice(len(test), min(args.check, len(test)), replace=False)
+    checked = [test[i].path for i in picked]
+    labels = np.array([test[i].label for i in picked])
 
     target = args.model.with_name(args.model.stem + ".int8.onnx")
     quantize_model(args.model, target, calibration, preprocess)
@@ -163,6 +177,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "int8_mb": round(target.stat().st_size / 2**20, 2),
         "int8_vs_fp32": compare(fp32, int8),
     }
+    fp32_accuracy = accuracy(fp32, labels)
+    int8_accuracy = accuracy(int8, labels)
+    report["accuracy"] = {"fp32": fp32_accuracy, "int8": int8_accuracy}
+    report["accepted"] = fp32_accuracy - int8_accuracy <= MAX_ACCURACY_DROP
+    if not report["accepted"]:
+        # Без файла сервер отдаёт телефону полную модель (pr-054)
+        target.unlink()
+        target.with_suffix(".json").unlink()
     if args.weights is not None:
         reference = torch_logits(
             args.weights, meta["name"], len(classes), batches(checked, preprocess)
@@ -182,7 +204,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--data", type=Path, default=Path("data/processed"))
     parser.add_argument("--weights", type=Path, default=None)
     parser.add_argument("--calibration", type=int, default=200)
-    parser.add_argument("--check", type=int, default=600)
+    parser.add_argument("--check", type=int, default=100_000)
     parser.add_argument(
         "--report", type=Path, default=Path("results/quantization.json")
     )

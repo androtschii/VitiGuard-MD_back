@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from vitiguard_ml.quantize import batches, compare, softmax
+from vitiguard_ml.quantize import accuracy, batches, compare, softmax
 
 FloatArray = np.ndarray
 
@@ -21,6 +21,12 @@ def test_compare_counts_same_diagnosis_and_probability_gap() -> None:
         float(softmax(reference)[1, 1] - softmax(candidate)[1, 1]), abs=1e-4
     )
     assert compare(reference, reference)["mean_prob_diff"] == 0
+
+
+def test_accuracy_against_labels() -> None:
+    logits = np.array([[2.0, 0.0], [0.0, 2.0], [3.0, 1.0]], dtype=np.float32)
+
+    assert accuracy(logits, np.array([0, 1, 1])) == 0.6667
 
 
 def test_batches_split_paths() -> None:

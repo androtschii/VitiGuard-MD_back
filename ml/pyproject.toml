@@ -31,6 +31,7 @@ train = [
     "timm>=1.0",
     "torch>=2.6",
     "torchvision>=0.21",
+    "onnxmltools>=1.13",
     "ultralytics>=8.3",
 ]
 
@@ -69,6 +70,7 @@ module = [
     "torchvision.*",
     "cv2.*",
     "ultralytics.*",
+    "onnxmltools.*",
     "pytorch_grad_cam.*",
     "segmentation_models_pytorch.*",
     "matplotlib.*",

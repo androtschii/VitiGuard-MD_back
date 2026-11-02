@@ -1,7 +1,8 @@
 import uuid
 from dataclasses import asdict
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Request, status
+from fastapi.concurrency import run_in_threadpool
 
 from app.api.deps import (
     CacheDep,
@@ -9,17 +10,27 @@ from app.api.deps import (
     NotifierDep,
     OpenMeteoDep,
     SessionDep,
+    SettingsDep,
 )
+from app.core.errors import ServiceUnavailableError
+from app.ml.risk_model import RiskModel
 from app.repositories.vineyard import VineyardRepository
 from app.schemas.errors import ErrorResponse
-from app.schemas.risk import RiskOutlookRead, RiskRead, TodayRiskRead
+from app.schemas.risk import (
+    NextDayRiskRead,
+    RiskOutlookRead,
+    RiskRead,
+    TodayRiskRead,
+)
 from app.services.outlook import vineyard_outlook
 from app.services.risk import (
     local_today,
     refresh_risks,
     season_risk_history,
+    season_start,
     today_levels,
 )
+from app.services.risk_forecast import next_day_infection
 
 # Ансамбль Open-Meteo обновляется несколько раз в сутки, а его загрузка и
 # расчёт моделей по 40 членам — самый тяжёлый запрос риска: вероятность хранится час
@@ -88,6 +99,40 @@ async def read_risk_outlook(
     )
     await cache.set_json(key, outlook.model_dump(mode="json"), OUTLOOK_TTL_SECONDS)
     return outlook
+
+
+def get_risk_model(request: Request, settings: SettingsDep) -> RiskModel:
+    """Модель загружается при первом запросе и остаётся в памяти процесса."""
+    model: RiskModel | None = getattr(request.app.state, "risk_model", None)
+    if model is None:
+        if not settings.risk_model_path.exists():
+            raise ServiceUnavailableError(
+                "Модель прогноза риска не загружена на сервер"
+            )
+        model = RiskModel(settings.risk_model_path)
+        request.app.state.risk_model = model
+    return model
+
+
+@router.get(
+    "/{vineyard_id}/risks/next-day",
+    summary="Заражение милдью на следующий день по модели LightGBM",
+    responses={status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse}},
+)
+async def read_next_day_risk(
+    vineyard_id: uuid.UUID,
+    request: Request,
+    settings: SettingsDep,
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> NextDayRiskRead | None:
+    view = await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
+    model = await run_in_threadpool(get_risk_model, request, settings)
+    # Две недели истории признаков: берётся запас до начала сезона
+    result = await next_day_infection(
+        session, view.vineyard.id, model, season_start(local_today())
+    )
+    return NextDayRiskRead.model_validate(asdict(result)) if result else None
 
 
 # Отдельный префикс: путь /vineyards/... конфликтовал бы с /vineyards/{id}

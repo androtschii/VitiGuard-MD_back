@@ -45,3 +45,15 @@ class RiskOutlookRead(ResponseSchema):
     days: list[OutlookDayRead]
     downy_week: float | None = Field(ge=0, le=1)
     powdery_week: float | None = Field(ge=0, le=1)
+
+
+class NextDayRiskRead(ResponseSchema):
+    """Прогноз заражения милдью моделью LightGBM на следующий день."""
+
+    day: date = Field(
+        description="День прогноза: следующий после последних полных суток"
+    )
+    probability: float = Field(ge=0, le=1)
+    threshold: float = Field(description="Порог с лучшим F1 на проверочном годе")
+    high: bool
+    model: str

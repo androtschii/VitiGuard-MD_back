@@ -122,6 +122,8 @@ class Settings(BaseSettings):
     diagnosis_model_path: Path = Path("models/diagnosis.onnx")
     # Сегментация поражения (U-Net, ml/pr-013); без неё диагноз ставится без маски
     lesion_model_path: Path = Path("models/lesion.onnx")
+    # Уточнение риска милдью на следующий день (pr-076); без файла выключено
+    risk_model_path: Path = Path("models/risk.onnx")
     # S3-совместимое хранилище фото листов (pr-039): RustFS в Docker Compose.
     # Ключи по умолчанию — только для локальной разработки
     s3_endpoint: str = "127.0.0.1:9000"

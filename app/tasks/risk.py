@@ -13,6 +13,7 @@ from app.integrations.telegram import TelegramClient
 from app.models.vineyard import Vineyard
 from app.services.risk import local_today, refresh_risks
 from app.services.telegram_bot import send_alerts
+from app.services.web_push import send_push_alerts
 
 REFRESH_ALL = "risk.refresh_all"
 
@@ -48,6 +49,9 @@ async def run_refresh_all(settings: Settings) -> dict[str, int]:
                 if settings.telegram_bot_token is not None
                 else 0
             )
+            # И в браузеры, подписанные на push (pr-081)
+            if settings.vapid_private_key is not None:
+                notified += await send_push_alerts(session, settings, local_today())
     finally:
         await notifier.close()
         await engine.dispose()

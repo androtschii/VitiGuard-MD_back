@@ -102,6 +102,12 @@ class Settings(BaseSettings):
     # ссылка для телефона. Telegram принимает в кнопках только https, а
     # 127.0.0.1 с телефона недоступен — без адреса бот кнопок не показывает
     telegram_webapp_url: str | None = None
+
+    # Web Push (pr-081): пара ключей VAPID и контакт администратора для
+    # push-сервисов. Без ключей push выключен, остальное работает
+    vapid_public_key: str | None = None
+    vapid_private_key: SecretStr | None = None
+    vapid_subject: str = "mailto:admin@vitiguard.md"
     # Снимки с облачностью сцены выше порога (в процентах) не берутся
     max_scene_cloud_cover: float = Field(default=10, ge=0, le=100)
     # Для расчёта индексов отсев по облачности сцены мягче: облака над самим

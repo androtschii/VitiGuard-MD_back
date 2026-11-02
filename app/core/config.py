@@ -122,6 +122,9 @@ class Settings(BaseSettings):
     diagnosis_model_path: Path = Path("models/diagnosis.onnx")
     # Сегментация поражения (U-Net, ml/pr-013); без неё диагноз ставится без маски
     lesion_model_path: Path = Path("models/lesion.onnx")
+    # Сжатая INT8-копия классификатора для телефона (pr-054); без неё
+    # телефон скачивает полную модель
+    mobile_model_path: Path = Path("models/diagnosis.int8.onnx")
     # Уточнение риска милдью на следующий день (pr-076); без файла выключено
     risk_model_path: Path = Path("models/risk.onnx")
     # S3-совместимое хранилище фото листов (pr-039): RustFS в Docker Compose.

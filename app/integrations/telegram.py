@@ -83,6 +83,20 @@ class TelegramClient:
     async def delete_webhook(self) -> None:
         await self._call("deleteWebhook", {})
 
+    async def set_webhook(self, url: str, secret: str) -> None:
+        """Telegram присылает обновления на url с секретом в заголовке
+        X-Telegram-Bot-Api-Secret-Token: по нему вебхук отличает Telegram."""
+        await self._call(
+            "setWebhook",
+            {
+                "url": url,
+                "secret_token": secret,
+                "allowed_updates": ["message", "callback_query"],
+                # Скопившиеся за время развёртывания сообщения не обрабатываются
+                "drop_pending_updates": True,
+            },
+        )
+
     async def get_updates(self, offset: int, wait: int) -> list[dict[str, Any]]:
         """Обновления с номера offset; Telegram держит запрос до wait секунд,
         пока не появится новое (long polling)."""

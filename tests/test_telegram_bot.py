@@ -12,6 +12,7 @@ from memory_storage import MemoryStorage
 from pydantic import SecretStr
 
 from app.api.deps import get_task_queue, get_telegram
+from app.cli.telegram_webhook import register
 from app.core.config import Settings
 from app.core.errors import ExternalServiceError
 from app.integrations.telegram import TelegramClient
@@ -567,3 +568,51 @@ async def test_task_answers_not_a_leaf_without_saving(tmp_path: Path) -> None:
     assert reply == NOT_A_LEAF
     assert telegram.sent == [(42, NOT_A_LEAF)]
     assert storage.files == {}
+
+
+async def test_webhook_is_registered_with_secret_and_menu() -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append((request.url.path.rsplit("/", 1)[1], json.loads(request.content)))
+        return httpx.Response(200, json={"ok": True, "result": True})
+
+    settings = Settings(
+        _env_file=None,
+        telegram_bot_token=SecretStr(TOKEN),
+        telegram_webhook_secret=SecretStr(SECRET),
+        telegram_webapp_url="https://vitiguard.example.md/",
+    )
+
+    url = await register(telegram_with(handler), settings)
+
+    assert url == "https://vitiguard.example.md/api/v1/telegram/webhook"
+    assert calls[0] == (
+        "setWebhook",
+        {
+            "url": url,
+            "secret_token": SECRET,
+            "allowed_updates": ["message", "callback_query"],
+            "drop_pending_updates": True,
+        },
+    )
+    assert [name for name, _ in calls[1:]] == ["setMyCommands", "setChatMenuButton"]
+
+
+@pytest.mark.parametrize(
+    ("values", "message"),
+    [
+        ({"telegram_webapp_url": "https://x.md"}, "WEBHOOK_SECRET"),
+        (
+            {"telegram_webapp_url": "http://x.md", "telegram_webhook_secret": SECRET},
+            "https://",
+        ),
+    ],
+)
+async def test_webhook_needs_secret_and_https(
+    values: dict[str, Any], message: str
+) -> None:
+    settings = Settings(_env_file=None, telegram_bot_token=SecretStr(TOKEN), **values)
+
+    with pytest.raises(SystemExit, match=message):
+        await register(telegram_with(lambda _: httpx.Response(200)), settings)

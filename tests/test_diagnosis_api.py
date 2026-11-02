@@ -163,6 +163,30 @@ def test_classifier_model_for_offline_use(
     assert client.get("/api/v1/ai/models/classifier").status_code == 401
 
 
+def test_phone_gets_int8_copy_when_present(
+    client: TestClient, headers: dict[str, str], tmp_path: Path
+) -> None:
+    app = client.app
+    settings: Settings = app.state.settings  # type: ignore[attr-defined]
+    full = client.get("/api/v1/ai/models/classifier", headers=headers).json()
+    mobile = tmp_path / "diagnosis.int8.onnx"
+    mobile.write_bytes(b"int8-weights")
+    mobile.with_suffix(".json").write_text(
+        settings.diagnosis_model_path.with_suffix(".json").read_text()
+    )
+    app.state.settings = settings.model_copy(  # type: ignore[attr-defined]
+        update={"mobile_model_path": mobile}
+    )
+
+    meta = client.get("/api/v1/ai/models/classifier", headers=headers).json()
+    file = client.get("/api/v1/ai/models/classifier/file", headers=headers)
+
+    assert meta["size_bytes"] == len(b"int8-weights")
+    assert meta["version"] != full["version"]
+    assert meta["classes"] == full["classes"]
+    assert file.content == b"int8-weights"
+
+
 def test_classifier_model_missing(
     client: TestClient, headers: dict[str, str], tmp_path: Path
 ) -> None:

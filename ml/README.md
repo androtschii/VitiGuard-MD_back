@@ -72,3 +72,16 @@ uv run --group train python -m vitiguard_ml.risk.experiment
 uv run pytest
 uv run mypy
 ```
+
+## Модель лозы: стволы и грозди
+
+Детектор «ствол + гроздь» для робота-сборщика учится на открытых данных (реестр с лицензиями — `DATASETS.md`) и дообучается каждый день в Google Colab ноутбуком `notebooks/vine_colab.ipynb`: [открыть в Colab](https://colab.research.google.com/github/androtschii/VitiGuard-MD_back/blob/main/ml/notebooks/vine_colab.ipynb).
+
+Первый запуск сам скачивает наборы и сохраняет готовый набор на Диск; каждый следующий дообучает модель от последней принятой версии. Версия принимается, только если на неизменной тестовой выборке она лучше прежней и ни один класс не просел больше чем на 1 пункт. Веса, ONNX и `registry.json` — в `Мой диск/vitiguard/vine`.
+
+Локально, на машине с GPU:
+
+```bash
+uv run --group train python -m vitiguard_ml.data.vine          # набор в data/processed/vine
+uv run --group train python -m vitiguard_ml.robot.vine --epochs 20
+```

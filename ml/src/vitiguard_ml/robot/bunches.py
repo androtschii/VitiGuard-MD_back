@@ -9,6 +9,7 @@ YOLO-seg находит каждую гроздь и её контур: по к�
 """
 
 import argparse
+import importlib
 import json
 from pathlib import Path
 from typing import Any
@@ -39,9 +40,10 @@ def train(
     batch: int = 8,
     seed: int = 42,
 ) -> dict[str, Any]:
-    from ultralytics import YOLO
+    # Модуль из группы train: без него ml ставится и проверяется в CI
+    yolo = importlib.import_module("ultralytics").YOLO
 
-    model = YOLO(model_name)
+    model = yolo(model_name)
     # Снимки WGISD крупные, грозди на них мелкие: размер входа больше обычного
     model.train(
         data=str(data),

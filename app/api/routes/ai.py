@@ -1,4 +1,5 @@
 import uuid
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from celery.result import AsyncResult
@@ -8,6 +9,7 @@ from fastapi.responses import FileResponse
 
 from app.api.deps import CurrentUserDep, SessionDep, SettingsDep, StorageDep
 from app.api.rate_limit import DIAGNOSE_LIMIT, per_user
+from app.core.config import Settings
 from app.core.errors import (
     NotFoundError,
     PayloadTooLargeError,
@@ -65,6 +67,21 @@ def classifier_file(settings: SettingsDep) -> ModelFile:
     return describe_model(path)
 
 
+def offline_model_path(settings: Settings) -> Path:
+    """Телефон скачивает модель целиком: сжатая копия в 8 бит вчетверо меньше
+    и отвечает почти так же (ml/pr-020). Сервер работает на полной модели."""
+    if settings.mobile_model_path.exists():
+        return settings.mobile_model_path
+    return settings.diagnosis_model_path
+
+
+def offline_file(settings: SettingsDep) -> tuple[Path, ModelFile]:
+    path = offline_model_path(settings)
+    if not path.exists():
+        raise ServiceUnavailableError("Модель диагностики не загружена на сервер")
+    return path, describe_model(path)
+
+
 MODEL_RESPONSES: dict[int | str, dict[str, object]] = {
     status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse}
 }
@@ -81,7 +98,7 @@ MODEL_RESPONSES: dict[int | str, dict[str, object]] = {
 async def classifier_model(
     settings: SettingsDep, _: CurrentUserDep
 ) -> ClassifierModelRead:
-    model = await run_in_threadpool(classifier_file, settings)
+    model = (await run_in_threadpool(offline_file, settings))[1]
     return ClassifierModelRead(**model.__dict__)
 
 
@@ -94,9 +111,9 @@ async def classifier_model(
 async def classifier_model_file(
     settings: SettingsDep, _: CurrentUserDep
 ) -> FileResponse:
-    model = await run_in_threadpool(classifier_file, settings)
+    path, model = await run_in_threadpool(offline_file, settings)
     return FileResponse(
-        settings.diagnosis_model_path,
+        path,
         media_type="application/octet-stream",
         filename=f"{model.name}-{model.version}.onnx",
         headers={

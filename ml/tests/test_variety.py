@@ -52,4 +52,3 @@ def test_classify_leaf_variety() -> None:
     assert res.confidence > 0.0
     assert len(res.top_candidates) > 0
     assert "aspect_ratio" in res.morphometrics
-

@@ -16,7 +16,7 @@ from app.core.errors import (
     ServiceUnavailableError,
 )
 from app.ml.classifier import LeafClassifier
-from app.ml.model_file import ModelFile, describe_model
+from app.ml.model_file import ModelFile, describe_model, describe_robot_model
 from app.ml.segmentation import LesionSegmenter
 from app.repositories.vineyard import VineyardRepository
 from app.schemas.diagnosis import (
@@ -24,6 +24,7 @@ from app.schemas.diagnosis import (
     DiagnosisJobRead,
     DiagnosisJobStarted,
     DiagnosisRead,
+    RobotModelRead,
 )
 from app.schemas.errors import ErrorResponse
 from app.services.diagnosis import analyze_leaf, photo_location, read_leaf_image
@@ -118,6 +119,48 @@ async def classifier_model_file(
         filename=f"{model.name}-{model.version}.onnx",
         headers={
             "ETag": f'"{model.version}"',
+            "Cache-Control": "private, max-age=86400",
+        },
+    )
+
+
+@router.get(
+    "/models/vine",
+    summary="Описание модели лозы для бортового компьютера робота",
+    responses=MODEL_RESPONSES,
+)
+async def vine_model(settings: SettingsDep, _: CurrentUserDep) -> RobotModelRead:
+    path = settings.vine_model_path
+    if not path.exists():
+        raise ServiceUnavailableError("Модель лозы не загружена на сервер")
+    meta = await run_in_threadpool(describe_robot_model, path)
+    return RobotModelRead(
+        name=meta.name,
+        classes=meta.classes,
+        image_size=meta.image_size,
+        version=meta.version,
+        size_bytes=meta.size_bytes,
+        format=meta.format,
+    )
+
+
+@router.get(
+    "/models/vine/file",
+    summary="Файл модели лозы ONNX для выкатки на робота",
+    response_class=FileResponse,
+    responses=MODEL_RESPONSES,
+)
+async def vine_model_file(settings: SettingsDep, _: CurrentUserDep) -> FileResponse:
+    path = settings.vine_model_path
+    if not path.exists():
+        raise ServiceUnavailableError("Модель лозы не загружена на сервер")
+    meta = await run_in_threadpool(describe_robot_model, path)
+    return FileResponse(
+        path,
+        media_type="application/octet-stream",
+        filename=f"{meta.name}-{meta.version}.onnx",
+        headers={
+            "ETag": f'"{meta.version}"',
             "Cache-Control": "private, max-age=86400",
         },
     )

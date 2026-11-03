@@ -47,6 +47,17 @@ class ClassifierModelRead(ResponseSchema):
     size_bytes: int
 
 
+class RobotModelRead(ResponseSchema):
+    """Модель детектора лозы (ствол + гроздь) для бортового компьютера робота."""
+
+    name: str = Field(default="vine_yolo")
+    classes: list[str] = Field(default=["trunk", "bunch"])
+    image_size: int = Field(default=640)
+    version: str = Field(examples=["v001", "3f1c9a0b7d2e4f60"])
+    size_bytes: int
+    format: str = Field(default="onnx")
+
+
 class DiagnosisRead(ResponseSchema):
     """Результат классификации фото листа."""
 

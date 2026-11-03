@@ -81,4 +81,3 @@ def test_deployment_manager_rejects_unaccepted_version(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="не была принята"):
         mgr.deploy(version="v001")
-

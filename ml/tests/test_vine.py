@@ -3,12 +3,22 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
+from conftest import make_image
+from PIL import Image
 
+from vitiguard_ml.data.images import difference_hash
 from vitiguard_ml.data.vine import (
     SOURCES,
+    _hamming,
+    _humain_labelimg_to_yolo,
+    _humain_original_images,
     block_split,
+    check_near_duplicates,
+    collect_test_hashes,
     is_original,
     missing_sources,
+    prepare_humain,
     prepare_inesc,
     prepare_inesc_second_camera,
     voc_to_yolo,
@@ -86,9 +96,105 @@ def test_second_camera_is_a_separate_source_without_test(tmp_path: Path) -> None
 def test_only_missing_sources_are_built(tmp_path: Path) -> None:
     assert missing_sources(tmp_path) == list(SOURCES)
 
-    write_config(tmp_path, {"inesc": {"test": 1}, "wgisd": {"test": 1}})
+    write_config(
+        tmp_path,
+        {"inesc": {"test": 1}, "wgisd": {"test": 1}, "inesc_second_camera": {"val": 1}},
+    )
 
-    assert missing_sources(tmp_path) == ["inesc_second_camera"]
+    assert missing_sources(tmp_path) == ["humain"]
+
+
+def test_hamming_distance_calculation() -> None:
+    assert _hamming("0000", "0000") == 0
+    assert _hamming("0001", "0000") == 1
+    assert _hamming("ffff", "0000") == 16
+
+
+def test_near_duplicates_detection_by_dhash(tmp_path: Path) -> None:
+    img_orig = tmp_path / "orig.jpg"
+    make_image(img_orig, seed=42)
+    img_copy = tmp_path / "copy.jpg"
+    with Image.open(img_orig) as im:
+        im.resize((128, 96)).save(img_copy, quality=60)
+    img_diff = tmp_path / "diff.jpg"
+    make_image(img_diff, seed=99)
+
+    h_orig = difference_hash(Image.open(img_orig).convert("RGB"))
+    dups = check_near_duplicates([img_copy, img_diff], {h_orig})
+
+    assert img_copy in dups
+    assert img_diff not in dups
+
+
+def test_humain_labels_to_yolo_trunk(tmp_path: Path) -> None:
+    label_file = tmp_path / "frame.txt"
+    label_file.write_text("1 0.45 0.55 0.20 0.80\n2 0.10 0.20 0.15 0.30\n")
+
+    lines = _humain_labelimg_to_yolo(label_file)
+
+    assert lines == [
+        "0 0.45 0.55 0.20 0.80",
+        "0 0.10 0.20 0.15 0.30",
+    ]
+
+
+def test_humain_filters_augmented_frames(tmp_path: Path) -> None:
+    root = tmp_path / "humain"
+    img_dir = root / "Training_Set" / "images"
+    gt_dir = root / "Training_Set" / "ground_truth"
+    img_dir.mkdir(parents=True)
+    gt_dir.mkdir(parents=True)
+
+    make_image(img_dir / "trunk_001.jpg", seed=1)
+    (gt_dir / "trunk_001.txt").write_text("0 0.5 0.5 0.2 0.8")
+
+    make_image(img_dir / "rotate_trunk_001.jpg", seed=1)
+    (gt_dir / "rotate_trunk_001.txt").write_text("0 0.5 0.5 0.2 0.8")
+
+    make_image(img_dir / "blur_trunk_001.jpg", seed=1)
+    (gt_dir / "blur_trunk_001.txt").write_text("0 0.5 0.5 0.2 0.8")
+
+    pairs = _humain_original_images(root)
+
+    assert len(pairs) == 1
+    assert pairs[0][0].name == "trunk_001.jpg"
+
+
+def test_collect_test_hashes_reads_images(tmp_path: Path) -> None:
+    assert collect_test_hashes(tmp_path) == set()
+
+    test_dir = tmp_path / "images" / "test"
+    test_dir.mkdir(parents=True)
+    img = test_dir / "sample.jpg"
+    make_image(img, seed=7)
+
+    hashes = collect_test_hashes(tmp_path)
+    assert len(hashes) == 1
+
+
+def test_prepare_humain_splits_into_train_and_val_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw = tmp_path / "raw"
+    root = raw / "humain" / "extracted" / "vine-trunk-main"
+    img_dir = root / "Training_Set" / "images"
+    gt_dir = root / "Training_Set" / "ground_truth"
+    img_dir.mkdir(parents=True)
+    gt_dir.mkdir(parents=True)
+
+    for i in range(10):
+        make_image(img_dir / f"frame_{i:03d}.jpg", seed=i)
+        (gt_dir / f"frame_{i:03d}.txt").write_text("0 0.5 0.5 0.2 0.8")
+
+    monkeypatch.setattr("vitiguard_ml.data.vine.download_humain", lambda _: root)
+
+    out = tmp_path / "out"
+    counts = prepare_humain(raw, out)
+
+    assert counts["test"] == 0
+    assert counts["train"] + counts["val"] == 10
+    assert counts["val"] == 2
+    assert not (out / "images" / "test").exists()
 
 
 def test_class_scores_from_ultralytics_metrics() -> None:

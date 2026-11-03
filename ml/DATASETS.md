@@ -9,6 +9,10 @@
 | [Embrapa WGISD](https://github.com/thsant/wgisd) (Santos и др.) | грозди пяти винных сортов; рамки и маски | CC BY-NC 4.0, не для коммерции | в обучении |
 | [VineSet, INESC TEC](https://doi.org/10.5281/zenodo.5362354) (Santos, Aguiar, Santos) | стволы, 9481 кадр с искусственными копиями, Pascal VOC | CC BY 4.0 | не нужен: 917 исходных кадров побайтно совпадают с кадрами архива INESC выше, рамки те же |
 | [Roboflow Universe, vineyard trunk & foliage](https://universe.roboflow.com/gokila/vineyard-trunk-foliage-detection) | стволы и листва | по описанию CC BY 4.0, не проверена | найден: для скачивания нужен аккаунт Roboflow |
+| [HUMAIN-Lab, vine-trunk](https://github.com/humain-lab/vine-trunk) (Badeka и др.) | стволы; 629 исходных кадров из 2786 (без искусственных копий rotate_, blur_, brightness_), рамки LabelImg | открытый (GitHub / ICMV) | в обучении: 503 кадра в обучение, 126 в проверку, в тест не идут |
+| [Mendeley Data, Vineyard dataset for pruning](https://doi.org/10.17632/n8cs4ns97p.2) (Pacioni и др.) | стволы, побеги до и после обрезки; 536 кадров, контуры VIA (полигоны) | CC BY 4.0 | найден: требует конвертации полигонов стволов в рамки YOLO |
+| [Roboflow Universe, Vinyard Trunk Detection](https://universe.roboflow.com/) (Agricultural Automation and Robotics Lab) | стволы, столбы; 164 кадра, рамки | CC BY 4.0 | найден: для скачивания нужен аккаунт Roboflow |
+| [GrapeMOTS](https://doi.org/10.1016/j.compag.2024.108845) (UAV видео) | грозди, стволы и столбы в отдельных рядах | CC BY 4.0 | найден: ракурс БПЛА сверху, не подходит для камеры на уровне шпалеры |
 
 Правила:
 

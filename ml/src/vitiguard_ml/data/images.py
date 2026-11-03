@@ -27,6 +27,11 @@ def difference_hash(image: Image.Image) -> str:
     return f"{bits:016x}"
 
 
+def hamming(first: str, second: str) -> int:
+    """Число различающихся бит двух dHash."""
+    return (int(first, 16) ^ int(second, 16)).bit_count()
+
+
 def read_image_info(path: Path) -> ImageInfo | None:
     """Размер и dHash изображения или None, если файл не читается как картинка."""
     try:

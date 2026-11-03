@@ -80,7 +80,7 @@ def test_compute_cut_target_valid() -> None:
     assert target.pixel[1] < 150  # Срез строго выше основания грозди
     assert 320 <= target.pixel[0] <= 340
     assert target.point_3d[2] == pytest.approx(0.60)
-    assert target.confidence > 0.8
+    assert target.stem_from_image
 
 
 def test_compute_cut_target_rejects_out_of_reach() -> None:

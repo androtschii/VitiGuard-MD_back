@@ -102,7 +102,9 @@ def test_export_to_label_studio(tmp_path: Path) -> None:
     task = data[0]
     assert task["data"]["frame_id"] == "frame_001"
     assert len(task["predictions"][0]["result"]) == 1
-    val = task["predictions"][0]["result"][0]["value"]
+    result = task["predictions"][0]["result"][0]
+    assert (result["from_name"], result["to_name"]) == ("label", "image")
+    val = result["value"]
     assert val["rectanglelabels"] == ["bunch"]
     assert val["width"] == pytest.approx(20.0)
     assert val["height"] == pytest.approx(30.0)

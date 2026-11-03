@@ -3,11 +3,7 @@ from pathlib import Path
 from conftest import make_image
 from PIL import Image
 
-from vitiguard_ml.data.images import read_image_info
-
-
-def hamming(a: str, b: str) -> int:
-    return bin(int(a, 16) ^ int(b, 16)).count("1")
+from vitiguard_ml.data.images import hamming, read_image_info
 
 
 def test_dhash_survives_resize_and_recompression(tmp_path: Path) -> None:
@@ -41,3 +37,9 @@ def test_unreadable_file_gives_none(tmp_path: Path) -> None:
     broken.write_bytes(b"\xff\xd8 not really a jpeg")
 
     assert read_image_info(broken) is None
+
+
+def test_hamming_counts_different_bits() -> None:
+    assert hamming("0000", "0000") == 0
+    assert hamming("0001", "0000") == 1
+    assert hamming("ffff", "0000") == 16

@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from vitiguard_ml.data.images import difference_hash
+from vitiguard_ml.data.images import difference_hash, hamming
 
 
 @dataclass(frozen=True)
@@ -69,10 +69,6 @@ def is_blurry(image_rgb: np.ndarray, min_variance: float = 80.0) -> tuple[bool, 
     return score < min_variance, score
 
 
-def _hamming(a: str, b: str) -> int:
-    return bin(int(a, 16) ^ int(b, 16)).count("1")
-
-
 class FrameCollector:
     """Менеджер отбора и сохранения дневных сессий робота."""
 
@@ -121,7 +117,7 @@ class FrameCollector:
         pil_img = Image.fromarray(rgb)
         h = difference_hash(pil_img)
         if any(
-            _hamming(h, existing) <= self.max_hamming for existing in self.seen_hashes
+            hamming(h, existing) <= self.max_hamming for existing in self.seen_hashes
         ):
             self.stats["rejected_duplicate"] += 1
             return None

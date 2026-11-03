@@ -108,3 +108,10 @@ def test_export_to_label_studio(tmp_path: Path) -> None:
     assert val["rectanglelabels"] == ["bunch"]
     assert val["width"] == pytest.approx(20.0)
     assert val["height"] == pytest.approx(30.0)
+
+
+def test_extract_predictions_empty() -> None:
+    from vitiguard_ml.robot.active_learning import extract_predictions
+
+    assert extract_predictions(None) == []
+    assert extract_predictions([]) == []

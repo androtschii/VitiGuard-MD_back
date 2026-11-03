@@ -8,12 +8,16 @@
   в Label Studio / CVAT перед ночным дообучением.
 """
 
+import argparse
+import importlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
+from vitiguard_ml.data.images import IMAGE_SUFFIXES
 from vitiguard_ml.data.vine import CLASSES
 
 
@@ -221,3 +225,115 @@ def export_to_label_studio(
     output_json.parent.mkdir(parents=True, exist_ok=True)
     with output_json.open("w", encoding="utf-8") as f:
         json.dump(tasks, f, ensure_ascii=False, indent=2)
+
+
+def extract_predictions(boxes_data: Any) -> list[BoxPrediction]:
+    """Извлекает список BoxPrediction из объекта результатов детекции Ultralytics Boxes."""
+    if boxes_data is None or len(boxes_data) == 0:
+        return []
+
+    xywhn = boxes_data.xywhn.cpu().numpy()
+    confs = boxes_data.conf.cpu().numpy()
+    classes = boxes_data.cls.cpu().numpy()
+
+    return [
+        BoxPrediction(
+            cls_id=int(cls_id),
+            cx=round(float(cx), 6),
+            cy=round(float(cy), 6),
+            w=round(float(w), 6),
+            h=round(float(h), 6),
+            conf=round(float(conf), 4),
+        )
+        for (cx, cy, w, h), conf, cls_id in zip(xywhn, confs, classes, strict=True)
+    ]
+
+
+def evaluate_frame_tta(
+    model: Any,
+    image_path: Path,
+    image_size: int = 640,
+    conf_threshold: float = 0.25,
+) -> tuple[list[BoxPrediction], list[BoxPrediction]]:
+    """Прогоняет модель на прямом и горизонтально отражённом кадре (TTA)."""
+    from PIL import Image
+
+    with Image.open(image_path) as im:
+        rgb = np.asarray(im.convert("RGB"))
+
+    flipped_rgb = np.ascontiguousarray(np.fliplr(rgb))
+
+    res_direct = model.predict(
+        rgb, imgsz=image_size, conf=conf_threshold, verbose=False
+    )[0]
+    res_flipped = model.predict(
+        flipped_rgb, imgsz=image_size, conf=conf_threshold, verbose=False
+    )[0]
+
+    return extract_predictions(res_direct.boxes), extract_predictions(res_flipped.boxes)
+
+
+def process_daily_frames(
+    model_path: Path,
+    frames_dir: Path,
+    out_json: Path,
+    top_k: int = 50,
+    image_size: int = 640,
+    conf_threshold: float = 0.25,
+) -> list[HardSample]:
+    """Прогоняет модель по кадрам дня, ранжирует по сложности и формирует задачи Label Studio."""
+    yolo = importlib.import_module("ultralytics").YOLO
+    model = yolo(str(model_path))
+
+    candidates: list[HardSample] = []
+    for img_path in sorted(frames_dir.iterdir()):
+        if img_path.suffix.lower() not in IMAGE_SUFFIXES:
+            continue
+        direct, flipped = evaluate_frame_tta(
+            model, img_path, image_size=image_size, conf_threshold=conf_threshold
+        )
+        candidates.append(
+            score_sample(
+                direct, flipped, frame_id=img_path.stem, image_file=img_path.name
+            )
+        )
+
+    selected = select_hard_samples(candidates, top_k=top_k)
+    export_to_label_studio(selected, out_json)
+    return selected
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--model", type=Path, required=True, help="Веса обученной модели лозы (.pt)"
+    )
+    parser.add_argument(
+        "--frames", type=Path, required=True, help="Папка со снимками робота за день"
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=Path("tasks_label_studio.json"),
+        help="Выходной JSON",
+    )
+    parser.add_argument(
+        "--top-k", type=int, default=50, help="Количество сложных кадров для отбора"
+    )
+    parser.add_argument(
+        "--image-size", type=int, default=640, help="Размер кадра для инференса"
+    )
+    args = parser.parse_args(argv)
+
+    selected = process_daily_frames(
+        model_path=args.model,
+        frames_dir=args.frames,
+        out_json=args.out,
+        top_k=args.top_k,
+        image_size=args.image_size,
+    )
+    print(f"Отобрано {len(selected)} сложных кадров, задачи сохранены в {args.out}")
+
+
+if __name__ == "__main__":
+    main()

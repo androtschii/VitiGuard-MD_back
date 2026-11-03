@@ -23,6 +23,7 @@ from app.api.routes import (
     telegram,
     tiles,
     treatments,
+    uav,
     users,
     varieties,
     vineyards,
@@ -58,6 +59,7 @@ api_router.include_router(robot.router)
 api_router.include_router(fleet.router)
 api_router.include_router(spraying.router)
 api_router.include_router(sensors.router)
+api_router.include_router(uav.router)
 api_router.include_router(push.router)
 api_router.include_router(diagnoses.router)
 api_router.include_router(ws.router)

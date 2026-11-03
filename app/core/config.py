@@ -127,6 +127,8 @@ class Settings(BaseSettings):
     mobile_model_path: Path = Path("models/diagnosis.int8.onnx")
     # Уточнение риска милдью на следующий день (pr-076); без файла выключено
     risk_model_path: Path = Path("models/risk.onnx")
+    # Модель детектора лозы (ствол + гроздь) для робота-сборщика (ml/pr-023, ml/pr-033)
+    vine_model_path: Path = Path("models/vine.onnx")
     # S3-совместимое хранилище фото листов (pr-039): RustFS в Docker Compose.
     # Ключи по умолчанию — только для локальной разработки
     s3_endpoint: str = "127.0.0.1:9000"

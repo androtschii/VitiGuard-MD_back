@@ -66,4 +66,3 @@ def test_evaluate_frame_bunches() -> None:
     results = evaluate_frame_bunches(img, boxes)
     assert len(results) == 2
     assert all(r.status in ("healthy", "diseased") for r in results)
-

@@ -194,3 +194,45 @@ def test_classifier_model_missing(
 
     for url in ("/api/v1/ai/models/classifier", "/api/v1/ai/models/classifier/file"):
         assert client.get(url, headers=headers).status_code == 503
+
+
+def test_vine_robot_model_endpoints(
+    client: TestClient, headers: dict[str, str], tmp_path: Path
+) -> None:
+    app = client.app
+    settings: Settings = app.state.settings  # type: ignore[attr-defined]
+    vine_onnx = tmp_path / "vine.onnx"
+    vine_onnx.write_bytes(b"mock-vine-onnx-model-weights")
+    app.state.settings = settings.model_copy(  # type: ignore[attr-defined]
+        update={"vine_model_path": vine_onnx}
+    )
+
+    meta_resp = client.get("/api/v1/ai/models/vine", headers=headers)
+    assert meta_resp.status_code == 200
+    meta = meta_resp.json()
+    assert meta["name"] == "vine_yolo"
+    assert meta["classes"] == ["trunk", "bunch"]
+    assert meta["image_size"] == 640
+    assert meta["size_bytes"] == len(b"mock-vine-onnx-model-weights")
+    assert len(meta["version"]) == 16
+
+    file_resp = client.get("/api/v1/ai/models/vine/file", headers=headers)
+    assert file_resp.status_code == 200
+    assert file_resp.content == b"mock-vine-onnx-model-weights"
+    assert file_resp.headers["etag"] == f'"{meta["version"]}"'
+
+    # Неавторизованный запрос возвращает 401
+    assert client.get("/api/v1/ai/models/vine").status_code == 401
+
+
+def test_vine_robot_model_missing(
+    client: TestClient, headers: dict[str, str], tmp_path: Path
+) -> None:
+    app = client.app
+    settings: Settings = app.state.settings  # type: ignore[attr-defined]
+    app.state.settings = settings.model_copy(  # type: ignore[attr-defined]
+        update={"vine_model_path": tmp_path / "absent_vine.onnx"}
+    )
+
+    for url in ("/api/v1/ai/models/vine", "/api/v1/ai/models/vine/file"):
+        assert client.get(url, headers=headers).status_code == 503

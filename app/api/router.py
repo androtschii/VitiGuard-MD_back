@@ -18,6 +18,7 @@ from app.api.routes import (
     reports,
     risks,
     robot,
+    spraying,
     telegram,
     tiles,
     treatments,
@@ -54,6 +55,7 @@ api_router.include_router(ai.router)
 api_router.include_router(alerts.router)
 api_router.include_router(robot.router)
 api_router.include_router(fleet.router)
+api_router.include_router(spraying.router)
 api_router.include_router(push.router)
 api_router.include_router(diagnoses.router)
 api_router.include_router(ws.router)

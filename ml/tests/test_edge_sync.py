@@ -70,4 +70,3 @@ def test_edge_sync_model_update(tmp_path: Path) -> None:
     assert res["new_version"] == server_sha
     assert (tmp_path / "current.onnx").exists()
     assert (tmp_path / "current.json").exists()
-

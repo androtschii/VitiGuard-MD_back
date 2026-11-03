@@ -123,4 +123,3 @@ def test_aggregate_yield_grid_and_geojson_export(tmp_path: Path) -> None:
     assert "yield_t_per_ha" in props
     assert "mean_sugar_brix" in props
     assert "disease_rate_pct" in props
-

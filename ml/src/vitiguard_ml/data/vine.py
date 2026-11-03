@@ -31,6 +31,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from vitiguard_ml.data.images import IMAGE_SUFFIXES, difference_hash
+from vitiguard_ml.data.mendeley import prepare_mendeley
 from vitiguard_ml.data.wgisd import download as download_wgisd
 from vitiguard_ml.data.wgisd import read_list, split_names
 
@@ -318,6 +319,7 @@ SOURCES: dict[str, Callable[[Path, Path], dict[str, int]]] = {
         raw / INESC_ARCHIVE, out
     ),
     "humain": lambda raw, out: prepare_humain(raw, out),
+    "mendeley": lambda raw, out: prepare_mendeley(raw, out),
 }
 
 

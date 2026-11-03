@@ -98,10 +98,15 @@ def test_only_missing_sources_are_built(tmp_path: Path) -> None:
 
     write_config(
         tmp_path,
-        {"inesc": {"test": 1}, "wgisd": {"test": 1}, "inesc_second_camera": {"val": 1}},
+        {
+            "inesc": {"test": 1},
+            "wgisd": {"test": 1},
+            "inesc_second_camera": {"val": 1},
+            "humain": {"train": 1},
+        },
     )
 
-    assert missing_sources(tmp_path) == ["humain"]
+    assert missing_sources(tmp_path) == ["mendeley"]
 
 
 def test_hamming_distance_calculation() -> None:

@@ -1,8 +1,10 @@
 """Определение точки среза плодоножки грозди для робота-сборщика (ml/pr-024).
 
 По маске грозди и карте глубины вычисляет 3D-координаты точки среза (ножки над
-гроздью) в системе координат манипулятора, вектор нормали подхода секатора
-и безопасный отступ от верхних ягод.
+гроздью) в системе координат камеры, вектор подхода секатора и безопасный
+отступ от верхних ягод. Перевод в координаты руки требует калибровки
+камера-рука на роботе. Пороги и направление ножки — исходные допущения: их
+нужно проверить на кадрах камеры робота (ml/pr-028).
 """
 
 from dataclasses import dataclass
@@ -36,7 +38,8 @@ class CutTarget:
     point_3d: tuple[float, float, float]
     approach_vector: tuple[float, float, float]
     stem_width_px: float
-    confidence: float
+    # Направление ножки найдено по снимку, а не взято вертикальным по умолчанию
+    stem_from_image: bool
     safe_to_cut: bool
 
 
@@ -51,7 +54,7 @@ def find_peduncle_base(mask: np.ndarray) -> tuple[int, int] | None:
         return None
 
     top_y = int(np.min(y_indices))
-    # Берем верхний срез грозди (первые 5% высоты или не менее 3 строк)
+    # Берём верхний срез грозди (первые 5% высоты или не менее 3 строк)
     max_y = int(np.max(y_indices))
     height = max_y - top_y + 1
     band_height = max(3, int(height * 0.05))
@@ -104,7 +107,7 @@ def estimate_stem_direction(
     else:
         dx, dy = 0.0, -1.0
 
-    # Ширина ножки: полуширина минимума интенсивности
+    # Ширина ножки — число столбцов темнее среднего по области
     threshold = float(np.mean(col_profiles))
     dark_pixels = int(np.sum(col_profiles < threshold))
     stem_width = max(3.0, float(dark_pixels))
@@ -186,13 +189,11 @@ def compute_cut_target(
         and cut_x < w - 5
     )
 
-    confidence = 0.95 if (safe and cut_depth > 0 and rgb is not None) else 0.70
-
     return CutTarget(
         pixel=(cut_x, cut_y),
         point_3d=point_3d,
         approach_vector=approach_vector,
         stem_width_px=stem_w,
-        confidence=confidence,
+        stem_from_image=rgb is not None,
         safe_to_cut=safe,
     )

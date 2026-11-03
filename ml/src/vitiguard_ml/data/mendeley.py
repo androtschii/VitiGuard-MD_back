@@ -9,21 +9,22 @@
 - аппроксимирует их в ограничивающие рамки YOLO (cx, cy, w, h);
 - конвертирует метку «vine trunk» в класс 0 («trunk»);
 - разбивает на обучение и проверку (в тест не идут, тестовая выборка фиксирована);
-- отсеивает возможные копии кадров по dHash.
+- отсеивает почти-копии тестовых кадров по dHash.
+
+Архив Mendeley не скачивается автоматически, поэтому раскладка data/raw/mendeley
+(images/ и via_annotations.json) и имена меток ещё не сверены с настоящими
+данными. Источник вносится в SOURCES модуля vine только после такой сверки.
 """
 
-import contextlib
 import json
 import shutil
 from pathlib import Path
 
-from vitiguard_ml.data.images import IMAGE_SUFFIXES, difference_hash
+from PIL import Image, UnidentifiedImageError
+
+from vitiguard_ml.data.vine import check_near_duplicates, collect_test_hashes
 
 TRUNK_LABELS = {"vine trunk", "trunk", "stem"}
-
-
-def _hamming(a: str, b: str) -> int:
-    return bin(int(a, 16) ^ int(b, 16)).count("1")
 
 
 def polygon_to_bbox(
@@ -70,8 +71,6 @@ def parse_via_json(
     # В VIA структура может быть словарём записей по ключам или под ключом _via_img_metadata
     entries = data.get("_via_img_metadata", data)
 
-    from PIL import Image
-
     for item in entries.values():
         if not isinstance(item, dict):
             continue
@@ -86,7 +85,7 @@ def parse_via_json(
         try:
             with Image.open(img_path) as im:
                 w_img, h_img = float(im.width), float(im.height)
-        except Exception:
+        except (UnidentifiedImageError, OSError):
             continue
 
         boxes: list[tuple[float, float, float, float]] = []
@@ -131,56 +130,34 @@ def parse_via_json(
 
 
 def prepare_mendeley(
-    raw_dir: Path,
-    out: Path,
-    val_ratio: float = 0.20,
-    max_hamming: int = 6,
+    raw_dir: Path, out: Path, val_ratio: float = 0.20
 ) -> dict[str, int]:
     """Разбивает размеченные кадры Mendeley на train и val (без test)."""
     images_dir = raw_dir / "mendeley" / "images"
     ann_file = raw_dir / "mendeley" / "via_annotations.json"
-
     if not ann_file.exists() or not images_dir.exists():
-        return {"train": 0, "val": 0, "test": 0}
+        # Пустой источник попал бы в sources.json и больше не собирался бы
+        raise FileNotFoundError(f"Нет разметки или снимков Mendeley в {raw_dir}")
 
     parsed = parse_via_json(ann_file, images_dir)
-    sorted_files = sorted(parsed.keys())
-
-    # Сбор хэшей тестовых кадров (если уже есть test)
-    from PIL import Image
-
-    test_hashes: set[str] = set()
-    test_dir = out / "images" / "test"
-    if test_dir.exists():
-        for p in test_dir.iterdir():
-            if p.suffix.lower() in IMAGE_SUFFIXES:
-                with contextlib.suppress(Exception):
-                    test_hashes.add(difference_hash(Image.open(p).convert("RGB")))
-
+    test_hashes = collect_test_hashes(out)
+    duplicates = set(
+        check_near_duplicates([images_dir / name for name in parsed], test_hashes)
+    )
     counts = {"train": 0, "val": 0, "test": 0}
-    val_step = round(1.0 / val_ratio) if val_ratio > 0 else 999999
+    val_step = round(1.0 / val_ratio)
 
-    for index, filename in enumerate(sorted_files):
-        img_src = images_dir / filename
-        boxes = parsed[filename]
-
-        if test_hashes:
-            with contextlib.suppress(Exception):
-                h = difference_hash(Image.open(img_src).convert("RGB"))
-                if any(_hamming(h, ref) <= max_hamming for ref in test_hashes):
-                    continue
-
-        split = "val" if (index % val_step == val_step - 1) else "train"
-
+    for index, filename in enumerate(sorted(parsed)):
+        source = images_dir / filename
+        if source in duplicates:
+            continue
+        split = "val" if index % val_step == val_step - 1 else "train"
         (out / "images" / split).mkdir(parents=True, exist_ok=True)
         (out / "labels" / split).mkdir(parents=True, exist_ok=True)
-
         target_name = f"mendeley_{Path(filename).stem}"
-        shutil.copyfile(img_src, out / "images" / split / f"{target_name}.jpg")
-
-        yolo_lines = [f"0 {cx} {cy} {w} {h}" for cx, cy, w, h in boxes]
+        shutil.copyfile(source, out / "images" / split / f"{target_name}.jpg")
         (out / "labels" / split / f"{target_name}.txt").write_text(
-            "\n".join(yolo_lines)
+            "\n".join(f"0 {cx} {cy} {w} {h}" for cx, cy, w, h in parsed[filename])
         )
         counts[split] += 1
 

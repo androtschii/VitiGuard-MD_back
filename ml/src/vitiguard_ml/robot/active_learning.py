@@ -14,6 +14,8 @@ from pathlib import Path
 
 import numpy as np
 
+from vitiguard_ml.data.vine import CLASSES
+
 
 @dataclass(frozen=True)
 class BoxPrediction:
@@ -167,14 +169,18 @@ def export_to_label_studio(
     output_json: Path,
     image_url_prefix: str = "/data/local-files/?d=frames/",
 ) -> None:
-    """Экспортирует отобранные кадры с предразметкой в формат задач Label Studio."""
+    """Экспортирует отобранные кадры с предразметкой в формат задач Label Studio.
+
+    Имена from_name и to_name должны совпадать с тегами проекта:
+    <Image name="image" value="$image"/> и
+    <RectangleLabels name="label" toName="image"> с метками trunk и bunch,
+    иначе Label Studio не покажет предразметку.
+    """
     tasks = []
-    classes = {0: "trunk", 1: "bunch"}
 
     for sample in samples:
         results = []
         for box in sample.predictions:
-            label_name = classes.get(box.cls_id, "trunk")
             x = (box.cx - box.w / 2.0) * 100.0
             y = (box.cy - box.h / 2.0) * 100.0
             width = box.w * 100.0
@@ -182,13 +188,15 @@ def export_to_label_studio(
 
             results.append(
                 {
+                    "from_name": "label",
+                    "to_name": "image",
                     "type": "rectanglelabels",
                     "value": {
                         "x": round(x, 2),
                         "y": round(y, 2),
                         "width": round(width, 2),
                         "height": round(height, 2),
-                        "rectanglelabels": [label_name],
+                        "rectanglelabels": [CLASSES[box.cls_id]],
                     },
                     "score": round(box.conf, 4),
                 }

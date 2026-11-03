@@ -24,14 +24,14 @@ import argparse
 import json
 import re
 import shutil
-import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
 
-from vitiguard_ml.data.images import IMAGE_SUFFIXES, difference_hash
-from vitiguard_ml.data.mendeley import prepare_mendeley
+from PIL import Image
+
+from vitiguard_ml.data.images import IMAGE_SUFFIXES, difference_hash, hamming
 from vitiguard_ml.data.wgisd import download as download_wgisd
 from vitiguard_ml.data.wgisd import read_list, split_names
 
@@ -53,11 +53,8 @@ AUGMENTED = re.compile(
 SECOND_CAMERA = re.compile(r"^rotated_left\d+$")
 BLOCK = 50
 INESC_ARCHIVE = "inesc/grape_trunk_dataset.zip"
-# Расстояние Хэмминга ≤ MAX_HAMMING — два кадра считаются почти-копиями
+# dHash, отличающийся от тестового не больше чем на MAX_HAMMING бит, — почти-копия
 MAX_HAMMING = 6
-HUMAIN_URL = "https://github.com/humain-lab/vine-trunk/archive/refs/heads/main.zip"
-HUMAIN_INNER = "vine-trunk-main"
-HUMAIN_AUGMENTED = re.compile(r"^(rotate_|blur_|brightness_)", re.IGNORECASE)
 
 
 def is_original(name: str) -> bool:
@@ -181,115 +178,29 @@ def prepare_wgisd(root: Path, out: Path) -> dict[str, int]:
     return counts
 
 
-def _hamming(a: str, b: str) -> int:
-    return bin(int(a, 16) ^ int(b, 16)).count("1")
-
-
 def collect_test_hashes(out: Path) -> set[str]:
-    """dHash всех кадров тестовой выборки: новый источник не должен содержать
-    их почти-копии, иначе метрики на тесте завышены."""
-    from PIL import Image
-
-    hashes: set[str] = set()
+    """dHash кадров тестовой выборки: новый источник не должен приносить их
+    почти-копии, иначе метрики на тесте завышены."""
     test_dir = out / "images" / "test"
     if not test_dir.exists():
-        return hashes
+        return set()
+    hashes = set()
     for path in sorted(test_dir.iterdir()):
         if path.suffix.lower() in IMAGE_SUFFIXES:
-            hashes.add(difference_hash(Image.open(path).convert("RGB")))
+            with Image.open(path) as image:
+                hashes.add(difference_hash(image))
     return hashes
 
 
 def check_near_duplicates(image_paths: list[Path], reference: set[str]) -> list[Path]:
-    """Кадры из нового источника, чей dHash ≤ MAX_HAMMING от тестового."""
-    from PIL import Image
-
-    duplicates: list[Path] = []
+    """Кадры, чей dHash не дальше MAX_HAMMING бит от одного из эталонных."""
+    duplicates = []
     for path in image_paths:
-        h = difference_hash(Image.open(path).convert("RGB"))
-        if any(_hamming(h, ref) <= MAX_HAMMING for ref in reference):
+        with Image.open(path) as image:
+            image_hash = difference_hash(image)
+        if any(hamming(image_hash, known) <= MAX_HAMMING for known in reference):
             duplicates.append(path)
     return duplicates
-
-
-def download_humain(raw_dir: Path) -> Path:
-    """Скачивает и распаковывает HUMAIN-Lab vine-trunk с GitHub."""
-    archive = raw_dir / "humain" / "vine-trunk.zip"
-    if not archive.exists():
-        archive.parent.mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(HUMAIN_URL, archive)
-    extracted = raw_dir / "humain" / "extracted"
-    if not extracted.exists():
-        with zipfile.ZipFile(archive) as zip_file:
-            zip_file.extractall(extracted)
-    return extracted / HUMAIN_INNER
-
-
-def _humain_original_images(root: Path) -> list[tuple[Path, Path]]:
-    """Пары (изображение, разметка LabelImg txt) без аугментаций."""
-    pairs: list[tuple[Path, Path]] = []
-    for subset in ("Training_Set", "Evaluation_Set", "Testing_Set"):
-        images_dir = root / subset / "images"
-        labels_dir = root / subset / "ground_truth"
-        if not images_dir.exists():
-            continue
-        for img in sorted(images_dir.iterdir()):
-            if img.suffix.lower() not in IMAGE_SUFFIXES:
-                continue
-            if HUMAIN_AUGMENTED.match(img.stem):
-                continue
-            label = labels_dir / f"{img.stem}.txt"
-            if label.exists():
-                pairs.append((img, label))
-    return pairs
-
-
-def _humain_labelimg_to_yolo(label_path: Path) -> list[str]:
-    """LabelImg YOLO txt → строки YOLO с классом 0 (ствол).
-
-    HUMAIN-Lab хранит разметку в формате YOLO (класс cx cy w h),
-    классы могут отличаться — пересчитываем все в 0 (trunk)."""
-    lines: list[str] = []
-    for line in label_path.read_text().strip().split("\n"):
-        parts = line.strip().split()
-        if len(parts) == 5:
-            lines.append(f"0 {parts[1]} {parts[2]} {parts[3]} {parts[4]}")
-    return lines
-
-
-def prepare_humain(raw: Path, out: Path) -> dict[str, int]:
-    """HUMAIN-Lab: только стволы (класс 0), в train и val, без теста.
-
-    Искусственные копии (rotate_, blur_, brightness_) отбрасываются.
-    Перед копированием проверяется dHash: почти-копии тестовых кадров
-    пропускаются."""
-    root = download_humain(raw)
-    pairs = _humain_original_images(root)
-    ref_hashes = collect_test_hashes(out)
-    counts = {"train": 0, "val": 0, "test": 0}
-    # Каждый пятый кадр — проверочный, остальные — обучение
-    originals = sorted(pairs, key=lambda p: p[0].stem)
-    skipped = 0
-    for index, (img, label) in enumerate(originals):
-        if ref_hashes:
-            from PIL import Image
-
-            h = difference_hash(Image.open(img).convert("RGB"))
-            if any(_hamming(h, ref) <= MAX_HAMMING for ref in ref_hashes):
-                skipped += 1
-                continue
-        split = "val" if index % 5 == 4 else "train"
-        (out / "images" / split).mkdir(parents=True, exist_ok=True)
-        (out / "labels" / split).mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(img, out / "images" / split / f"humain_{img.stem}.jpg")
-        yolo_lines = _humain_labelimg_to_yolo(label)
-        (out / "labels" / split / f"humain_{img.stem}.txt").write_text(
-            "\n".join(yolo_lines)
-        )
-        counts[split] += 1
-    if skipped:
-        print(f"HUMAIN-Lab: пропущено {skipped} почти-копий тестовых кадров")
-    return counts
 
 
 def write_config(out: Path, sources: dict[str, dict[str, int]]) -> None:
@@ -318,8 +229,6 @@ SOURCES: dict[str, Callable[[Path, Path], dict[str, int]]] = {
     "inesc_second_camera": lambda raw, out: prepare_inesc_second_camera(
         raw / INESC_ARCHIVE, out
     ),
-    "humain": lambda raw, out: prepare_humain(raw, out),
-    "mendeley": lambda raw, out: prepare_mendeley(raw, out),
 }
 
 

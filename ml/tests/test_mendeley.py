@@ -109,3 +109,8 @@ def test_prepare_mendeley(tmp_path: Path) -> None:
     assert (out / "labels" / "train" / "mendeley_sample_00.txt").exists()
     label_content = (out / "labels" / "train" / "mendeley_sample_00.txt").read_text()
     assert label_content.startswith("0 ")
+
+
+def test_prepare_mendeley_without_data_fails(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError):
+        prepare_mendeley(tmp_path / "raw", tmp_path / "processed")

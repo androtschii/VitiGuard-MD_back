@@ -15,6 +15,7 @@ from app.api.routes import (
     regions,
     reports,
     risks,
+    robot,
     telegram,
     tiles,
     treatments,
@@ -48,6 +49,7 @@ api_router.include_router(weather.router)
 api_router.include_router(tiles.router)
 api_router.include_router(ai.router)
 api_router.include_router(alerts.router)
+api_router.include_router(robot.router)
 api_router.include_router(push.router)
 api_router.include_router(diagnoses.router)
 api_router.include_router(ws.router)

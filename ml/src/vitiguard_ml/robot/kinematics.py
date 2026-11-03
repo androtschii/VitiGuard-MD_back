@@ -88,7 +88,9 @@ def transform_camera_to_base(
         # Смещение камеры относительно базы: x=+0.08м, y=+0.15м, z=+0.05м
         trans_vector = np.array([[0.08], [0.15], [0.05]], dtype=np.float64)
 
-    res: np.ndarray = np.asarray((rot_matrix @ p + trans_vector).flatten(), dtype=np.float64)
+    res: np.ndarray = np.asarray(
+        (rot_matrix @ p + trans_vector).flatten(), dtype=np.float64
+    )
     return res
 
 

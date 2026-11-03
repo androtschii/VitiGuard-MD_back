@@ -8,6 +8,7 @@ from app.api.routes import (
     bioclimatic,
     diagnoses,
     field_notes,
+    fleet,
     harvests,
     info,
     osm,
@@ -52,6 +53,7 @@ api_router.include_router(tiles.router)
 api_router.include_router(ai.router)
 api_router.include_router(alerts.router)
 api_router.include_router(robot.router)
+api_router.include_router(fleet.router)
 api_router.include_router(push.router)
 api_router.include_router(diagnoses.router)
 api_router.include_router(ws.router)

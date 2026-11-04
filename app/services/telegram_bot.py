@@ -26,6 +26,12 @@ from app.models.alert import Alert
 from app.models.enums import Disease, RiskLevel
 from app.models.user import User
 from app.models.vineyard import Vineyard
+from app.services.farm_bot import (
+    DISEASES_TEXT,
+    disease_reply,
+    farm_reply,
+    farm_topic,
+)
 from app.services.wine_guide import (
     BUY_TEXT,
     LOCATION_KEYBOARD,
@@ -50,7 +56,11 @@ DISEASE_NAMES = {
 HELP = (
     "Пришлите фото листа винограда — один лист крупным планом, при дневном "
     "свете. Бот определит болезнь и сохранит проверку в историю VitiGuard MD. "
-    "Предупреждения о риске по участкам — команда /alerts."
+    "Предупреждения о риске по участкам — команда /alerts.\n"
+    "/risk — риск болезней на сегодня, /plan — план обработок на неделю, "
+    "/history — последние проверки, /diseases — справка о болезнях. "
+    "Можно спросить и своими словами: «где сегодня опасно?», "
+    "«что такое оидиум?»."
 )
 PHOTO_HINT = (
     "Как проверить лист:\n"
@@ -63,6 +73,7 @@ PHOTO_HINT = (
 WELCOME = (
     "Здравствуйте! Это бот VitiGuard MD — мониторинг здоровья виноградников.\n"
     "📷 Пришлите фото листа — бот определит болезнь.\n"
+    "📊 /risk — риск болезней на сегодня, 🗓 /plan — план обработок.\n"
     "🔔 /alerts — предупреждения о риске по участкам.\n"
     "📱 /app — открыть приложение на телефоне."
 )
@@ -75,7 +86,11 @@ NO_APP = (
 COMMANDS = [
     ("start", "Начало и ссылка на приложение"),
     ("photo", "Как проверить лист по фото"),
+    ("risk", "Риск болезней на сегодня"),
+    ("plan", "План обработок на неделю"),
+    ("history", "Последние проверки листьев"),
     ("alerts", "Предупреждения о риске по участкам"),
+    ("diseases", "Справка о болезнях винограда"),
     ("spray", "Чем обрабатывать виноград"),
     ("wine", "Какое вино выбрать"),
     ("buy", "Где купить вино рядом"),
@@ -83,6 +98,7 @@ COMMANDS = [
     ("help", "Что умеет бот"),
 ]
 QUICK_DIAGNOSIS_PATH = "/diagnosis/quick"
+FARM_COMMANDS = ("/risk", "/plan", "/history")
 
 
 def https_url(url: str | None) -> str | None:
@@ -292,13 +308,21 @@ async def handle_update(
     if text == "/buy":
         await telegram.send_message(chat_id, BUY_TEXT, LOCATION_KEYBOARD)
         return
+    if text == "/diseases":
+        await telegram.send_message(chat_id, DISEASES_TEXT)
+        return
     if message.location is not None:
         await telegram.send_message(
             chat_id,
             nearest_text(message.location.latitude, message.location.longitude),
         )
         return
-    answer = guide_reply(text) if text else None
+    # Вопрос о своём хозяйстве важнее справки: «когда обрабатывать от милдью» —
+    # это план участков, а не общий совет
+    command = text if text in FARM_COMMANDS else None
+    if command is None and text and not text.startswith("/"):
+        command = farm_topic(text)
+    answer = None if command or not text else guide_reply(text) or disease_reply(text)
     if answer is not None:
         await telegram.send_message(
             chat_id, answer, LOCATION_KEYBOARD if answer == BUY_TEXT else None
@@ -311,6 +335,10 @@ async def handle_update(
     file_id = photo_file(message)
     if owner is None:
         await telegram.send_message(chat_id, NOT_LINKED)
+    elif command is not None:
+        await telegram.send_message(
+            chat_id, await farm_reply(session, owner.id, command)
+        )
     elif text == "/alerts":
         vineyards = await owned_vineyards(session, owner)
         await telegram.send_message(

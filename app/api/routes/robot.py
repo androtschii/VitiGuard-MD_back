@@ -8,7 +8,7 @@ from fastapi import APIRouter, File, Form, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 
 from app.api.deps import CurrentUserDep, SettingsDep
-from app.core.errors import PayloadTooLargeError
+from app.core.errors import BadRequestError, PayloadTooLargeError
 from app.ml.model_file import describe_robot_model
 from app.schemas.errors import ErrorResponse
 from app.schemas.robot import (
@@ -24,6 +24,9 @@ router = APIRouter(
 )
 
 MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # 15 MB
+# Идентификатор робота становится именем папки: только буквы, цифры, «-» и «_»,
+# иначе «../» в нём вывел бы запись за пределы каталога кадров
+ROBOT_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 
 
 @router.post(
@@ -89,7 +92,10 @@ def _save_uploaded_frame(
 )
 async def upload_active_learning_frame(
     image: Annotated[UploadFile, File(description="Снимок со спорной разметкой")],
-    robot_id: Annotated[str, Form(description="Идентификатор робота")],
+    settings: SettingsDep,
+    robot_id: Annotated[
+        str, Form(description="Идентификатор робота", pattern=ROBOT_ID_PATTERN)
+    ],
     uncertainty_score: Annotated[
         float, Form(description="Оценка неопределённости TTA")
     ] = 0.5,
@@ -103,14 +109,19 @@ async def upload_active_learning_frame(
     if len(content) > MAX_UPLOAD_BYTES:
         raise PayloadTooLargeError("Файл кадра превышает лимит 15 МБ")
 
-    upload_dir = Path("data/raw/robot_uploads") / robot_id
+    try:
+        meta = json.loads(metadata_json) if metadata_json else {}
+    except json.JSONDecodeError as error:
+        raise BadRequestError("metadata_json должен быть JSON") from error
+
+    upload_dir = settings.robot_upload_dir / robot_id
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     sample_id = f"al_{uuid.uuid4().hex[:10]}"
     ext = Path(image.filename or "frame.jpg").suffix or ".jpg"
     dest_path = upload_dir / f"{sample_id}{ext}"
 
-    queue_log = Path("data/raw/robot_uploads/active_learning_queue.jsonl")
+    queue_log = settings.robot_upload_dir / "active_learning_queue.jsonl"
     queue_log.parent.mkdir(parents=True, exist_ok=True)
 
     log_entry: dict[str, object] = {
@@ -119,7 +130,7 @@ async def upload_active_learning_frame(
         "received_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "uncertainty_score": uncertainty_score,
         "file": str(dest_path),
-        "meta": json.loads(metadata_json) if metadata_json else {},
+        "meta": meta,
     }
     await run_in_threadpool(
         _save_uploaded_frame, dest_path, content, queue_log, log_entry

@@ -1,12 +1,18 @@
+import json
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
 from app.core.config import Settings
 from app.models.user import User
+
+FRAME = b"fake-jpg-binary-image-data-for-active-learning"
 
 
 def test_robot_telemetry_endpoint(client: TestClient, tmp_path: Path) -> None:
@@ -56,31 +62,60 @@ def test_robot_telemetry_endpoint(client: TestClient, tmp_path: Path) -> None:
         app.dependency_overrides.clear()  # type: ignore[attr-defined]
 
 
-def test_robot_active_learning_upload(client: TestClient) -> None:
-    app = client.app
+def upload(
+    client: TestClient, robot_id: str, metadata: str = '{"tta_discrepancy": 0.35}'
+) -> Any:
+    return client.post(
+        "/api/v1/robot/active-learning/upload",
+        files={"image": ("hard_frame.jpg", FRAME, "image/jpeg")},
+        data={
+            "robot_id": robot_id,
+            "uncertainty_score": "0.78",
+            "metadata_json": metadata,
+        },
+        headers={"Authorization": "Bearer mock-token"},
+    )
+
+
+@pytest.fixture
+def robot_client(client: TestClient, tmp_path: Path) -> Iterator[TestClient]:
+    app: Any = client.app
+    app.state.settings = app.state.settings.model_copy(
+        update={"robot_upload_dir": tmp_path / "uploads"}
+    )
     mock_user = MagicMock(spec=User)
     mock_user.id = uuid.uuid4()
     mock_user.is_active = True
+    app.dependency_overrides[get_current_user] = lambda: mock_user
+    yield client
+    app.dependency_overrides.clear()
 
-    frame_bytes = b"fake-jpg-binary-image-data-for-active-learning"
-    files = {"image": ("hard_frame.jpg", frame_bytes, "image/jpeg")}
-    data = {
-        "robot_id": "harvester-test-01",
-        "uncertainty_score": "0.78",
-        "metadata_json": '{"tta_discrepancy": 0.35}',
-    }
 
-    app.dependency_overrides[get_current_user] = lambda: mock_user  # type: ignore[attr-defined]
-    try:
-        resp = client.post(
-            "/api/v1/robot/active-learning/upload",
-            files=files,
-            data=data,
-            headers={"Authorization": "Bearer mock-token"},
-        )
-        assert resp.status_code == 201
-        res = resp.json()
-        assert res["status"] == "queued_for_label_studio"
-        assert res["bytes_received"] == len(frame_bytes)
-    finally:
-        app.dependency_overrides.clear()  # type: ignore[attr-defined]
+def test_robot_active_learning_upload(robot_client: TestClient, tmp_path: Path) -> None:
+    resp = upload(robot_client, "harvester-test-01")
+
+    assert resp.status_code == 201
+    res = resp.json()
+    assert res["status"] == "queued_for_label_studio"
+    assert res["bytes_received"] == len(FRAME)
+    frames = list((tmp_path / "uploads" / "harvester-test-01").iterdir())
+    assert [frame.read_bytes() for frame in frames] == [FRAME]
+    queue = (tmp_path / "uploads" / "active_learning_queue.jsonl").read_text(
+        encoding="utf-8"
+    )
+    assert json.loads(queue)["meta"] == {"tta_discrepancy": 0.35}
+
+
+@pytest.mark.parametrize("robot_id", ["../../outside", "a/b", "робот", ""])
+def test_robot_id_cannot_leave_upload_dir(
+    robot_client: TestClient, tmp_path: Path, robot_id: str
+) -> None:
+    assert upload(robot_client, robot_id).status_code == 422
+    assert not (tmp_path / "outside").exists()
+
+
+def test_broken_metadata_is_rejected(robot_client: TestClient, tmp_path: Path) -> None:
+    resp = upload(robot_client, "harvester-test-01", metadata="{not json")
+
+    assert resp.status_code == 400
+    assert not (tmp_path / "uploads").exists()

@@ -129,6 +129,8 @@ class Settings(BaseSettings):
     risk_model_path: Path = Path("models/risk.onnx")
     # Модель детектора лозы (ствол + гроздь) для робота-сборщика (ml/pr-023, ml/pr-033)
     vine_model_path: Path = Path("models/vine.onnx")
+    # Сложные кадры с робота для разметки (ml/pr-030): вне каталога кода
+    robot_upload_dir: Path = Path("data/raw/robot_uploads")
     # S3-совместимое хранилище фото листов (pr-039): RustFS в Docker Compose.
     # Ключи по умолчанию — только для локальной разработки
     s3_endpoint: str = "127.0.0.1:9000"

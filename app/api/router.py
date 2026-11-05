@@ -5,8 +5,10 @@ from app.api.routes import (
     ai,
     alerts,
     auth,
+    bioclimatic,
     diagnoses,
     field_notes,
+    fleet,
     harvests,
     info,
     osm,
@@ -15,9 +17,14 @@ from app.api.routes import (
     regions,
     reports,
     risks,
+    robot,
+    sensors,
+    spraying,
+    sustainability,
     telegram,
     tiles,
     treatments,
+    uav,
     users,
     varieties,
     vineyards,
@@ -39,6 +46,7 @@ api_router.include_router(risks.today_router)
 api_router.include_router(treatments.router)
 api_router.include_router(field_notes.router)
 api_router.include_router(phenology.router)
+api_router.include_router(bioclimatic.router)
 api_router.include_router(harvests.router)
 api_router.include_router(weather_events.router)
 api_router.include_router(telegram.router)
@@ -48,6 +56,12 @@ api_router.include_router(weather.router)
 api_router.include_router(tiles.router)
 api_router.include_router(ai.router)
 api_router.include_router(alerts.router)
+api_router.include_router(robot.router)
+api_router.include_router(fleet.router)
+api_router.include_router(spraying.router)
+api_router.include_router(sensors.router)
+api_router.include_router(uav.router)
+api_router.include_router(sustainability.router)
 api_router.include_router(push.router)
 api_router.include_router(diagnoses.router)
 api_router.include_router(ws.router)

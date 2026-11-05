@@ -2,7 +2,7 @@
 
 import pytest
 
-from vitiguard_ml.uav.orthomosaic import (
+from app.services.uav_orthomosaic import (
     MultispectralPixel,
     UAVOrthomosaicAnalyzer,
 )
@@ -104,7 +104,7 @@ def test_detect_canopy_stress_ndre() -> None:
 
 def test_summarize_replanting_order() -> None:
     """Проверка ведомости заказа саженцев с 5% резервом."""
-    from vitiguard_ml.uav.orthomosaic import MissingVineGap
+    from app.services.uav_orthomosaic import MissingVineGap
 
     analyzer = UAVOrthomosaicAnalyzer()
     gaps = [

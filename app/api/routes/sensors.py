@@ -25,17 +25,23 @@ router = APIRouter(
 
 
 class MeshStatusRequest(BaseModel):
+    """Показания датчиков сети участка для проверки её состояния."""
+
     vineyard_id: str
     sensors: list[SensorTelemetryDTO]
 
 
 class FrostAssessmentRequest(BaseModel):
+    """Показания датчиков и фаза развития лозы для оценки опасности заморозка."""
+
     vineyard_id: str
     sensors: list[SensorTelemetryDTO]
     phenology_stage: str = Field(default="BBCH 09 (Распускание почек)")
 
 
 class HailAssessmentRequest(BaseModel):
+    """Показания датчика и падение давления для оценки опасности града."""
+
     vineyard_id: str
     telemetry: SensorTelemetryDTO
     pressure_drop_1h_hpa: float = Field(

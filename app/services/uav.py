@@ -2,13 +2,6 @@
 
 from typing import Any
 
-from vitiguard_ml.uav.orthomosaic import (
-    CanopyStressZone,
-    MissingVineGap,
-    MultispectralPixel,
-    UAVOrthomosaicAnalyzer,
-)
-
 from app.schemas.uav import (
     CanopyStressZoneDTO,
     MissingVineGapDTO,
@@ -16,6 +9,12 @@ from app.schemas.uav import (
     ReplantingOrderResponse,
     UAVAnalysisRequest,
     UAVAnalysisResponse,
+)
+from app.services.uav_orthomosaic import (
+    CanopyStressZone,
+    MissingVineGap,
+    MultispectralPixel,
+    UAVOrthomosaicAnalyzer,
 )
 
 

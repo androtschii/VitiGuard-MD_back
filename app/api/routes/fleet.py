@@ -1,14 +1,6 @@
 """Маршруты API для координации и диспетчеризации флота роботов (sprint-27)."""
 
 from fastapi import APIRouter, status
-from vitiguard_ml.robot.fleet import (
-    FleetDispatcher,
-    HeadlandOccupancy,
-    RobotAgent,
-    RobotStatus,
-    RowHarvestStatus,
-    VineyardRow,
-)
 
 from app.api.deps import CurrentUserDep
 from app.schemas.errors import ErrorResponse
@@ -18,6 +10,14 @@ from app.schemas.fleet import (
     RendezvousEventDTO,
     RowAssignmentVerdictDTO,
     UnloadRequestDTO,
+)
+from app.services.fleet_dispatch import (
+    FleetDispatcher,
+    HeadlandOccupancy,
+    RobotAgent,
+    RobotStatus,
+    RowHarvestStatus,
+    VineyardRow,
 )
 
 router = APIRouter(

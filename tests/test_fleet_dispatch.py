@@ -2,7 +2,7 @@
 
 import pytest
 
-from vitiguard_ml.robot.fleet import (
+from app.services.fleet_dispatch import (
     FleetDispatcher,
     HeadlandOccupancy,
     RobotAgent,

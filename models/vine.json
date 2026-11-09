@@ -1,0 +1,12 @@
+{
+  "name": "vine_yolo11n",
+  "classes": ["trunk", "bunch"],
+  "image_size": 960,
+  "version": "v002",
+  "test": {
+    "map50": 0.7856,
+    "map50_95": 0.4133,
+    "trunk_map50_95": 0.3029,
+    "bunch_map50_95": 0.5236
+  }
+}

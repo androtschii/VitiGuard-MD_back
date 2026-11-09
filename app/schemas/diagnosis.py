@@ -58,6 +58,29 @@ class RobotModelRead(ResponseSchema):
     format: str = Field(default="onnx")
 
 
+class VineDetectionItem(ResponseSchema):
+    """Рамка ствола или грозди на снимке."""
+
+    label: Literal["trunk", "bunch"] = Field(description="Ствол лозы или гроздь")
+    confidence: float = Field(ge=0, le=1)
+    box: tuple[float, float, float, float] = Field(
+        description="Рамка x1, y1, x2, y2 в долях ширины и высоты снимка",
+        examples=[[0.31, 0.12, 0.45, 0.98]],
+    )
+
+
+class VineDetectionRead(ResponseSchema):
+    """Стволы и грозди на фото ряда виноградника."""
+
+    model: str = Field(examples=["vine_yolo11n"])
+    version: str = Field(examples=["3f1c9a0b7d2e4f60"])
+    image_width: int
+    image_height: int
+    trunks: int
+    bunches: int
+    detections: list[VineDetectionItem]
+
+
 class DiagnosisRead(ResponseSchema):
     """Результат классификации фото листа."""
 

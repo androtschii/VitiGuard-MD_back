@@ -18,6 +18,7 @@ from app.core.errors import (
 from app.ml.classifier import LeafClassifier
 from app.ml.model_file import ModelFile, describe_model, describe_robot_model
 from app.ml.segmentation import LesionSegmenter
+from app.ml.vine_detector import VineDetector
 from app.repositories.vineyard import VineyardRepository
 from app.schemas.diagnosis import (
     ClassifierModelRead,
@@ -25,6 +26,8 @@ from app.schemas.diagnosis import (
     DiagnosisJobStarted,
     DiagnosisRead,
     RobotModelRead,
+    VineDetectionItem,
+    VineDetectionRead,
 )
 from app.schemas.errors import ErrorResponse
 from app.services.diagnosis import analyze_leaf, photo_location, read_leaf_image
@@ -59,6 +62,16 @@ def get_segmenter(request: Request, settings: SettingsDep) -> LesionSegmenter | 
         segmenter = LesionSegmenter(settings.lesion_model_path)
         request.app.state.segmenter = segmenter
     return segmenter
+
+
+def get_vine_detector(request: Request, settings: SettingsDep) -> VineDetector:
+    detector: VineDetector | None = getattr(request.app.state, "vine_detector", None)
+    if detector is None:
+        if not settings.vine_model_path.exists():
+            raise ServiceUnavailableError("Модель лозы не загружена на сервер")
+        detector = VineDetector(settings.vine_model_path)
+        request.app.state.vine_detector = detector
+    return detector
 
 
 def classifier_file(settings: SettingsDep) -> ModelFile:
@@ -163,6 +176,55 @@ async def vine_model_file(settings: SettingsDep, _: CurrentUserDep) -> FileRespo
             "ETag": f'"{meta.version}"',
             "Cache-Control": "private, max-age=86400",
         },
+    )
+
+
+# Та же модель, что у робота, отвечает на фото ряда с телефона: агроном видит,
+# что распознаёт робот, — стволы (препятствия для манипулятора) и грозди
+@router.post(
+    "/vine/detect",
+    dependencies=[Depends(per_user(DIAGNOSE_LIMIT))],
+    summary="Стволы и грозди на фото ряда виноградника",
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse},
+        status.HTTP_413_CONTENT_TOO_LARGE: {"model": ErrorResponse},
+        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: {"model": ErrorResponse},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ErrorResponse},
+    },
+)
+async def detect_vine(
+    image: Annotated[
+        UploadFile, File(description="Фото ряда: JPEG, PNG или WebP до 10 МБ")
+    ],
+    request: Request,
+    settings: SettingsDep,
+    _: CurrentUserDep,
+    confidence: Annotated[
+        float, Query(ge=0.05, le=0.95, description="Порог уверенности рамки")
+    ] = 0.25,
+) -> VineDetectionRead:
+    data = await image.read(MAX_IMAGE_BYTES + 1)
+    if len(data) > MAX_IMAGE_BYTES:
+        raise PayloadTooLargeError("Файл больше 10 МБ")
+    photo = read_leaf_image(data)
+    detector = get_vine_detector(request, settings)
+    found = await run_in_threadpool(detector.detect, photo, confidence)
+    meta = await run_in_threadpool(describe_robot_model, settings.vine_model_path)
+    return VineDetectionRead(
+        model=detector.name,
+        version=meta.version,
+        image_width=photo.width,
+        image_height=photo.height,
+        trunks=sum(item.label == "trunk" for item in found),
+        bunches=sum(item.label == "bunch" for item in found),
+        detections=[
+            VineDetectionItem(
+                label=item.label,  # type: ignore[arg-type]
+                confidence=item.confidence,
+                box=item.box,
+            )
+            for item in found
+        ],
     )
 
 

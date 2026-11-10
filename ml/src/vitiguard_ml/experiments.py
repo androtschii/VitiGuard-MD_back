@@ -145,7 +145,7 @@ def stage_classify(args: argparse.Namespace, config: Any, device: str) -> None:
     loaders = {
         "train": make_loader(
             train_samples,
-            build_train_transform(size),
+            build_train_transform(size, field=config.field_augment),
             config.batch_size,
             True,
             args.workers,

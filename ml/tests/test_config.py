@@ -55,3 +55,11 @@ def test_invalid_config_is_rejected(tmp_path: Path, override: str) -> None:
 
     with pytest.raises(ValidationError):
         load_config(broken)
+
+
+def test_field_config_turns_on_field_augment() -> None:
+    config = load_config(CONFIGS / "field.yaml")
+
+    assert config.field_augment is True
+    assert config.image_size == load_config(CONFIGS / "base.yaml").image_size
+    assert load_config(CONFIGS / "base.yaml").field_augment is False

@@ -87,6 +87,5 @@ app/
   tasks/           фоновые задачи
 tests/
 docs/
-  roadmap.md       план работ
   decisions.md     принятые технические решения
 ```

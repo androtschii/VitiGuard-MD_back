@@ -35,6 +35,8 @@ class ExperimentConfig(StrictModel):
     batch_size: int = Field(gt=0)
     epochs: int = Field(gt=0)
     learning_rate: float = Field(gt=0)
+    # Аугментации полевой съёмки: фон из листвы, тень, малое разрешение
+    field_augment: bool = False
     classes: tuple[str, ...] = Field(min_length=2)
     split: SplitConfig
     paths: PathsConfig

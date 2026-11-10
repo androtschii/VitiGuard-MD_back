@@ -7,6 +7,7 @@ pytest.importorskip("albumentations")
 from vitiguard_ml.augment import (
     build_eval_transform,
     build_train_transform,
+    foliage_background,
 )
 
 Image = npt.NDArray[np.uint8]
@@ -41,3 +42,28 @@ def test_eval_transform_is_deterministic(image: Image) -> None:
 
     assert first.shape == (224, 224, 3)
     assert np.array_equal(first, transform(image=image)["image"])
+
+
+def test_foliage_replaces_only_white_background() -> None:
+    leaf = np.full((64, 64, 3), 245, dtype=np.uint8)
+    leaf[16:48, 16:48] = (40, 140, 40)
+
+    result = foliage_background(leaf, np.random.default_rng(1))
+
+    # Лист не тронут, белого фона не осталось
+    assert np.array_equal(result[16:48, 16:48], leaf[16:48, 16:48])
+    corner = result[:8, :8].astype(int)
+    assert corner.mean() < 170
+    assert result.dtype == np.uint8
+
+
+def test_foliage_without_background_keeps_image(image: Image) -> None:
+    dark = (image // 2).astype(np.uint8)
+    assert foliage_background(dark) is dark
+
+
+def test_field_transform_gives_normalized_square(image: Image) -> None:
+    result = build_train_transform(224, field=True)(image=image)["image"]
+
+    assert result.shape == (224, 224, 3)
+    assert result.dtype == np.float32

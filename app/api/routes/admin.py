@@ -5,13 +5,15 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 from sqlalchemy import func, or_, select
 
-from app.api.deps import AdminDep, SessionDep
+from app.api.deps import AdminDep, ResetMailerDep, SessionDep, SettingsDep
 from app.core.errors import BadRequestError, NotFoundError
 from app.models.user import User, UserRole
 from app.repositories.auth import RefreshTokenRepository
+from app.schemas.auth import PasswordResetRequest
 from app.schemas.errors import ErrorResponse
 from app.schemas.pagination import Page
 from app.schemas.user import AdminUserUpdate, UserRead, UserSearchParams
+from app.services.auth import request_password_reset
 
 # Управление пользователями и ролями (frontend/pr-091): только администратору
 router = APIRouter(
@@ -84,3 +86,28 @@ async def update_user(
     await session.commit()
     await session.refresh(user)
     return UserRead.model_validate(user)
+
+
+# Пароли хранятся только хэшем Argon2: прочитать их не может никто, в том числе
+# администратор. Вместо этого он отправляет пользователю ссылку на смену пароля
+@router.post(
+    "/users/{user_id}/password-reset",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Отправить пользователю ссылку для смены пароля",
+    responses={status.HTTP_404_NOT_FOUND: {"model": ErrorResponse}},
+)
+async def send_password_reset(
+    user_id: uuid.UUID,
+    _: AdminDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    send_mail: ResetMailerDep,
+) -> None:
+    user = await session.get(User, user_id)
+    if user is None:
+        raise NotFoundError("Пользователь не найден")
+    if not user.is_active:
+        raise BadRequestError("Пользователь заблокирован: сначала разблокируйте его")
+    await request_password_reset(
+        session, PasswordResetRequest(email=user.email), settings, send_mail
+    )

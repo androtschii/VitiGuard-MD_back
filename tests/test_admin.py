@@ -113,3 +113,39 @@ def test_only_admin_gets_in(api_client: TestClient, admin: dict[str, str]) -> No
         f"{URL}/{uuid.uuid4()}", headers=admin, json={"role": "owner"}
     )
     assert bad_role.status_code == 422
+
+
+def test_admin_sends_password_reset_link(
+    api_client: TestClient, admin: dict[str, str]
+) -> None:
+    from app.api.deps import get_reset_mailer
+
+    sent: list[tuple[str, str]] = []
+    app = api_client.app
+    app.dependency_overrides[get_reset_mailer] = lambda: (  # type: ignore[attr-defined]
+        lambda to, url: sent.append((to, url))
+    )
+    try:
+        target = user_id(api_client, admin, "grower@example.md")
+        url = f"{URL}/{target}/password-reset"
+
+        assert api_client.post(url, headers=admin).status_code == 202
+        assert [to for to, _ in sent] == ["grower@example.md"]
+        assert "/reset-password?token=" in sent[0][1]
+
+        # Пароль администратору не показывается ни в одном ответе
+        listed = api_client.get(URL, headers=admin).json()["items"]
+        assert all("password" not in key for item in listed for key in item)
+
+        # Простой пользователь ссылку для чужого аккаунта не отправит
+        grower = login(api_client, "grower@example.md")
+        assert api_client.post(url, headers=grower).status_code == 403
+
+        missing = f"{URL}/{uuid.uuid4()}/password-reset"
+        assert api_client.post(missing, headers=admin).status_code == 404
+
+        api_client.patch(f"{URL}/{target}", headers=admin, json={"is_active": False})
+        assert api_client.post(url, headers=admin).status_code == 400
+        assert len(sent) == 1
+    finally:
+        app.dependency_overrides.pop(get_reset_mailer, None)  # type: ignore[attr-defined]

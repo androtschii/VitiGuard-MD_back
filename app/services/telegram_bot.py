@@ -269,14 +269,27 @@ async def handle_update(
             )
             return
         user = await link_chat(session, cache, code, chat_id)
+        if user is None:
+            # Одноразовую ссылку часто открывают второй раз: если чат уже
+            # привязан, это не ошибка — сообщаем, к какому аккаунту
+            linked_email = await session.scalar(
+                select(User.email).where(
+                    User.telegram_chat_id == chat_id, User.is_active
+                )
+            )
+            await telegram.send_message(
+                chat_id,
+                (
+                    f"Этот чат уже подключён к {linked_email}. {HELP}"
+                    if linked_email
+                    else "Ссылка устарела или уже использована. "
+                    "Получите новую в профиле."
+                ),
+                keyboard if linked_email else None,
+            )
+            return
         await telegram.send_message(
-            chat_id,
-            (
-                f"Готово: чат привязан к {user.email}. {HELP}"
-                if user
-                else "Ссылка устарела или уже использована. Получите новую в профиле."
-            ),
-            keyboard if user else None,
+            chat_id, f"Готово: чат привязан к {user.email}. {HELP}", keyboard
         )
         return
     # Подсказки и ссылка на приложение — и без привязанного чата

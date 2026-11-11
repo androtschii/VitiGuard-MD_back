@@ -222,8 +222,11 @@ def test_chat_is_linked_by_one_time_link(bot: dict[str, Any]) -> None:
     assert send(client, {"text": f"/start {code}"}) == 200
     assert telegram.sent[-1][1].startswith("Готово: чат привязан к grower@example.md")
     assert client.get("/api/v1/users/me", headers=headers).json()["telegram_linked"]
-    # Второй раз та же ссылка не срабатывает
+    # Повторное открытие той же ссылки — не ошибка: чат уже подключён
     send(client, {"text": f"/start {code}"})
+    assert telegram.sent[-1][1].startswith("Этот чат уже подключён к grower@example.md")
+    # Чужой или устаревший код в неподключённом чате
+    send(client, {"chat": {"id": 999}, "text": "/start bad"})
     assert "устарела" in telegram.sent[-1][1]
 
     assert (

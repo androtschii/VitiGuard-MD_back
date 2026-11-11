@@ -9,7 +9,8 @@ from app.integrations.object_storage import Storage
 from app.ml.overlays import PNG_DATA_URL
 from app.models.diagnosis import DiseaseResult, LeafImage
 from app.models.enums import ProcessingStatus
-from app.schemas.diagnosis import DiagnosisRead
+from app.models.vine_check import VineCheck
+from app.schemas.diagnosis import DiagnosisRead, VineDetectionRead
 
 EXTENSIONS = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}
 CONTENT_TYPES = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
@@ -28,6 +29,44 @@ def overlay_key(photo_key: str, overlay: str) -> str:
 
 def png_bytes(data_url: str) -> bytes:
     return base64.b64decode(data_url.removeprefix(PNG_DATA_URL))
+
+
+async def save_vine_check(
+    session: AsyncSession,
+    storage: Storage,
+    owner_id: uuid.UUID,
+    vineyard_id: uuid.UUID | None,
+    data: bytes,
+    photo: Image.Image,
+    detection: VineDetectionRead,
+) -> uuid.UUID:
+    """Фото ряда — в хранилище, найденные стволы и грозди — в историю.
+    Если запись в базу не удалась, фото удаляется."""
+    check = VineCheck(
+        owner_id=owner_id,
+        vineyard_id=vineyard_id,
+        storage_key="",
+        content_type="",
+        width=photo.width,
+        height=photo.height,
+        model_name=detection.model,
+        model_version=detection.version,
+        trunks=detection.trunks,
+        bunches=detection.bunches,
+        detections=[item.model_dump(mode="json") for item in detection.detections],
+    )
+    session.add(check)
+    await session.flush()
+    extension = EXTENSIONS.get(photo.format or "", "jpg")
+    check.storage_key = f"{owner_id}/vine/{check.id}.{extension}"
+    check.content_type = CONTENT_TYPES[extension]
+    await run_in_threadpool(storage.put, check.storage_key, data, check.content_type)
+    try:
+        await session.commit()
+    except Exception:
+        await run_in_threadpool(storage.delete, check.storage_key)
+        raise
+    return check.id
 
 
 async def save_diagnosis(

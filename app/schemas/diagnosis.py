@@ -79,6 +79,21 @@ class VineDetectionRead(ResponseSchema):
     trunks: int
     bunches: int
     detections: list[VineDetectionItem]
+    # Запись в истории анализов ряда; нет — фото не сохранялось
+    id: uuid.UUID | None = None
+
+
+class VineCheckRead(EntityResponse):
+    """Анализ ряда из истории: фото, найденные стволы и грозди."""
+
+    vineyard_id: uuid.UUID | None
+    vineyard_name: str | None
+    model: str
+    image_width: int
+    image_height: int
+    trunks: int
+    bunches: int
+    detections: list[VineDetectionItem]
 
 
 class DiagnosisRead(ResponseSchema):

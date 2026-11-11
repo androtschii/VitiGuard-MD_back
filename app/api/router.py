@@ -27,6 +27,7 @@ from app.api.routes import (
     uav,
     users,
     varieties,
+    vine_checks,
     vineyards,
     weather,
     weather_events,
@@ -64,4 +65,5 @@ api_router.include_router(uav.router)
 api_router.include_router(sustainability.router)
 api_router.include_router(push.router)
 api_router.include_router(diagnoses.router)
+api_router.include_router(vine_checks.router)
 api_router.include_router(ws.router)

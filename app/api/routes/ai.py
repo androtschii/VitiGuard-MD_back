@@ -31,7 +31,11 @@ from app.schemas.diagnosis import (
 )
 from app.schemas.errors import ErrorResponse
 from app.services.diagnosis import analyze_leaf, photo_location, read_leaf_image
-from app.services.diagnosis_history import EXTENSIONS, save_diagnosis
+from app.services.diagnosis_history import (
+    EXTENSIONS,
+    save_diagnosis,
+    save_vine_check,
+)
 from app.tasks.diagnosis import DIAGNOSE
 from app.worker.celery_app import celery_app
 
@@ -198,19 +202,30 @@ async def detect_vine(
     ],
     request: Request,
     settings: SettingsDep,
-    _: CurrentUserDep,
+    user: CurrentUserDep,
+    session: SessionDep,
+    storage: StorageDep,
     confidence: Annotated[
         float, Query(ge=0.05, le=0.95, description="Порог уверенности рамки")
     ] = 0.25,
+    save: Annotated[
+        bool, Query(description="Сохранить фото и результат в историю анализов ряда")
+    ] = False,
+    vineyard_id: Annotated[
+        uuid.UUID | None, Query(description="Участок, на котором снято фото")
+    ] = None,
 ) -> VineDetectionRead:
     data = await image.read(MAX_IMAGE_BYTES + 1)
     if len(data) > MAX_IMAGE_BYTES:
         raise PayloadTooLargeError("Файл больше 10 МБ")
     photo = read_leaf_image(data)
     detector = get_vine_detector(request, settings)
+    if save and vineyard_id is not None:
+        # Только свой участок: чужой — как несуществующий
+        await VineyardRepository(session).get_for_owner(user.id, vineyard_id)
     found = await run_in_threadpool(detector.detect, photo, confidence)
     meta = await run_in_threadpool(describe_robot_model, settings.vine_model_path)
-    return VineDetectionRead(
+    result = VineDetectionRead(
         model=detector.name,
         version=meta.version,
         image_width=photo.width,
@@ -226,6 +241,11 @@ async def detect_vine(
             for item in found
         ],
     )
+    if save:
+        result.id = await save_vine_check(
+            session, storage, user.id, vineyard_id, data, photo, result
+        )
+    return result
 
 
 @router.post(

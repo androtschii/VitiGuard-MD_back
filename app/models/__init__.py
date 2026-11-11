@@ -12,6 +12,7 @@ from app.models.satellite import IndexType, SatelliteScan, VegetationIndex
 from app.models.treatment import Treatment
 from app.models.user import User, UserRole
 from app.models.variety import BerryColor, Susceptibility, Variety
+from app.models.vine_check import VineCheck
 from app.models.vineyard import Vineyard
 from app.models.weather import DiseaseRisk, WeatherData
 from app.models.weather_event import WeatherEvent
@@ -42,6 +43,7 @@ __all__ = [
     "UserRole",
     "Variety",
     "VegetationIndex",
+    "VineCheck",
     "Vineyard",
     "WeatherData",
     "WeatherEvent",

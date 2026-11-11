@@ -1,4 +1,7 @@
+from collections.abc import Callable
+
 import pytest
+from conftest import set_role
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
@@ -7,12 +10,15 @@ URL = "/api/v1/varieties"
 MISSING = f"{URL}/01900000-0000-7000-8000-000000000000"
 
 
-def login_as(api_client: TestClient, email: str, role: str) -> dict[str, str]:
+RunSql = Callable[[str], list[tuple[object, ...]]]
+
+
+def login_as(
+    api_client: TestClient, run_sql: RunSql, email: str, role: str
+) -> dict[str, str]:
     credentials = {"email": email, "password": "secret123"}
-    api_client.post(
-        "/api/v1/auth/register",
-        json={**credentials, "full_name": "Тест", "role": role},
-    )
+    api_client.post("/api/v1/auth/register", json={**credentials, "full_name": "Тест"})
+    set_role(run_sql, email, role)
     token = api_client.post("/api/v1/auth/login", json=credentials).json()[
         "access_token"
     ]
@@ -20,13 +26,13 @@ def login_as(api_client: TestClient, email: str, role: str) -> dict[str, str]:
 
 
 @pytest.fixture
-def grower(api_client: TestClient) -> dict[str, str]:
-    return login_as(api_client, "grower@example.md", "user")
+def grower(api_client: TestClient, run_sql: RunSql) -> dict[str, str]:
+    return login_as(api_client, run_sql, "grower@example.md", "user")
 
 
 @pytest.fixture
-def agronomist(api_client: TestClient) -> dict[str, str]:
-    return login_as(api_client, "agronomist@example.md", "agronomist")
+def agronomist(api_client: TestClient, run_sql: RunSql) -> dict[str, str]:
+    return login_as(api_client, run_sql, "agronomist@example.md", "agronomist")
 
 
 def test_moldovan_varieties_are_preloaded(

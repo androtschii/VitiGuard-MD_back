@@ -69,9 +69,9 @@ class RegisterRequest(RequestSchema):
     email: Email
     password: Password
     full_name: str = Field(min_length=2, max_length=255)
-    # Роль администратора назначает только администратор, при регистрации её
-    # выбрать нельзя
-    role: Literal["user", "agronomist"] = "user"
+    # Роли агронома и администратора назначает только администратор: агроном
+    # видит проверки всех виноградарей, и выбрать эту роль самому нельзя
+    role: Literal["user"] = "user"
 
 
 class PasswordResetRequest(RequestSchema):

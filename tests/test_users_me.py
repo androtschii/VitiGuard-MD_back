@@ -2,6 +2,7 @@ from collections.abc import Callable
 from typing import Any
 
 import pytest
+from conftest import set_role
 from fastapi.testclient import TestClient
 
 pytestmark = pytest.mark.integration
@@ -12,11 +13,12 @@ CREDENTIALS = {"email": "grower@example.md", "password": "secret123"}
 
 
 @pytest.fixture
-def headers(api_client: TestClient) -> dict[str, str]:
+def headers(api_client: TestClient, run_sql: RunSql) -> dict[str, str]:
     api_client.post(
         "/api/v1/auth/register",
-        json={**CREDENTIALS, "full_name": "Андрей Бахов", "role": "agronomist"},
+        json={**CREDENTIALS, "full_name": "Андрей Бахов"},
     )
+    set_role(run_sql, CREDENTIALS["email"], "agronomist")
     token = api_client.post("/api/v1/auth/login", json=CREDENTIALS).json()[
         "access_token"
     ]

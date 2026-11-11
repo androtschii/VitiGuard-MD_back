@@ -130,6 +130,12 @@ async def _run_sql(url: str, statement: str) -> list[tuple[object, ...]]:
         await engine.dispose()
 
 
+def set_role(run_sql: Callable[[str], object], email: str, role: str) -> None:
+    """Роль агронома или администратора назначает администратор, а не
+    регистрация: в тестах она ставится прямо в базе."""
+    run_sql(f"UPDATE users SET role = '{role}' WHERE email = '{email}'")
+
+
 @pytest.fixture
 def run_sql(migrated_database_url: str) -> Callable[[str], list[tuple[object, ...]]]:
     """Выполняет SQL в тестовой БД: смотреть, что осталось в таблицах после запроса."""

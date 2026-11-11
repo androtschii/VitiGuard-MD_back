@@ -162,6 +162,8 @@ class DiagnosisRecordRead(EntityResponse):
     location: LocationRead | None
     # None — агроном ещё не смотрел
     review: ReviewRead | None
+    # Кто снял фото: заполняется в очереди агронома
+    owner_name: str | None = None
 
 
 class DiagnosisQuery(PageParams):
@@ -172,3 +174,11 @@ class DiagnosisQuery(PageParams):
     # Границы включительно, по календарным дням UTC
     date_from: date | None = None
     date_to: date | None = None
+
+
+class ReviewQueueQuery(DiagnosisQuery):
+    """Очередь агронома: проверки всех виноградарей, по умолчанию без заключения."""
+
+    reviewed: bool | None = Field(
+        default=False, description="false — ждут заключения, true — с заключением"
+    )

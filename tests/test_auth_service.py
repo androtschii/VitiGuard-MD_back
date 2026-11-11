@@ -157,12 +157,11 @@ async def test_register_hashes_password_and_commits(
             email="New@Example.md",
             password=PASSWORD,
             full_name="Ион",
-            role="agronomist",
         ),
     )
 
     assert user.email == "new@example.md"
-    assert user.role is UserRole.AGRONOMIST
+    assert user.role is UserRole.USER
     assert user.hashed_password.startswith("$argon2id$")
     assert store.commits == 1
 

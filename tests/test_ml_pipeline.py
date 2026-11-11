@@ -3,13 +3,14 @@
 агронома и диагностика в фоне через настоящий воркер Celery и Redis."""
 
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
 from celery import Celery
 from celery.contrib.testing.worker import start_worker
+from conftest import set_role
 from diagnosis_model import build_model, build_segmenter, gps_photo
 from fastapi.testclient import TestClient
 from memory_storage import MemoryStorage
@@ -19,6 +20,8 @@ from app.core.config import Settings
 from app.integrations import object_storage
 from app.tasks import diagnosis as diagnosis_task
 from app.worker.celery_app import create_celery
+
+RunSql = Callable[[str], list[tuple[object, ...]]]
 
 pytestmark = pytest.mark.integration
 
@@ -53,11 +56,12 @@ def client(
     return api_client
 
 
-def login(client: TestClient) -> dict[str, str]:
+def login(client: TestClient, run_sql: RunSql) -> dict[str, str]:
     client.post(
         "/api/v1/auth/register",
-        json={**CREDENTIALS, "full_name": "Мария", "role": "agronomist"},
+        json={**CREDENTIALS, "full_name": "Мария"},
     )
+    set_role(run_sql, CREDENTIALS["email"], "agronomist")
     token = client.post("/api/v1/auth/login", json=CREDENTIALS).json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
@@ -72,9 +76,9 @@ def upload(client: TestClient, url: str, headers: dict[str, str]) -> Any:
 
 
 def test_photo_goes_through_whole_pipeline(
-    client: TestClient, storage: MemoryStorage
+    client: TestClient, storage: MemoryStorage, run_sql: RunSql
 ) -> None:
-    headers = login(client)
+    headers = login(client, run_sql)
 
     diagnosis = upload(client, "/api/v1/ai/diagnose", headers).json()
 
@@ -137,9 +141,9 @@ def worker(
 
 
 def test_background_diagnosis_through_worker(
-    client: TestClient, storage: MemoryStorage, worker: Celery
+    client: TestClient, storage: MemoryStorage, worker: Celery, run_sql: RunSql
 ) -> None:
-    headers = login(client)
+    headers = login(client, run_sql)
 
     started = upload(client, "/api/v1/ai/diagnose/jobs", headers)
     assert started.status_code == 202

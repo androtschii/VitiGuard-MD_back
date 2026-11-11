@@ -1,6 +1,7 @@
 from collections.abc import Callable
 
 import pytest
+from conftest import set_role
 from fastapi.testclient import TestClient
 from pwdlib.hashers.argon2 import Argon2Hasher
 
@@ -17,17 +18,17 @@ PASSWORD = "secret123"
 
 
 @pytest.fixture
-def registered(api_client: TestClient) -> None:
+def registered(api_client: TestClient, run_sql: RunSql) -> None:
     response = api_client.post(
         "/api/v1/auth/register",
         json={
             "email": EMAIL,
             "password": PASSWORD,
             "full_name": "Андрей Бахов",
-            "role": "agronomist",
         },
     )
     assert response.status_code == 201
+    set_role(run_sql, EMAIL, "agronomist")
 
 
 @pytest.mark.usefixtures("registered")

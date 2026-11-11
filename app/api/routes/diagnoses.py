@@ -8,6 +8,7 @@ from fastapi.concurrency import run_in_threadpool
 from app.api.deps import AgronomistDep, CurrentUserDep, SessionDep, StorageDep
 from app.core.errors import NotFoundError
 from app.models.diagnosis import DiseaseResult
+from app.models.user import User, UserRole
 from app.repositories.diagnosis import DiagnosisFilter, DiagnosisRepository
 from app.schemas.diagnosis import (
     DiagnosisQuery,
@@ -15,6 +16,7 @@ from app.schemas.diagnosis import (
     DiseaseProbability,
     LocationRead,
     Overlay,
+    ReviewQueueQuery,
     ReviewRead,
     ReviewUpdate,
 )
@@ -34,7 +36,20 @@ NOT_FOUND: dict[int | str, dict[str, Any]] = {
 }
 
 
-def to_record(result: DiseaseResult) -> DiagnosisRecordRead:
+# Агроном и администратор видят проверки всех виноградарей: подтверждают
+# диагнозы. Удалить чужую проверку не может никто — только её владелец
+EXPERTS = frozenset({UserRole.AGRONOMIST, UserRole.ADMIN})
+
+
+async def visible(
+    repository: DiagnosisRepository, user: User, diagnosis_id: uuid.UUID
+) -> DiseaseResult:
+    if user.role in EXPERTS:
+        return await repository.get_any(diagnosis_id)
+    return await repository.get_for_owner(user.id, diagnosis_id)
+
+
+def to_record(result: DiseaseResult, with_owner: bool = False) -> DiagnosisRecordRead:
     image = result.image
     vineyard = image.vineyard
     probabilities = sorted(
@@ -76,6 +91,9 @@ def to_record(result: DiseaseResult) -> DiagnosisRecordRead:
             else None
         ),
         review=review,
+        owner_name=(
+            (image.owner.full_name or image.owner.email) if with_owner else None
+        ),
     )
 
 
@@ -96,6 +114,29 @@ async def list_diagnoses(
 
 
 @router.get(
+    "/review-queue",
+    summary="Очередь агронома: проверки всех виноградарей",
+    responses={status.HTTP_403_FORBIDDEN: {"model": ErrorResponse}},
+)
+async def review_queue(
+    query: Annotated[ReviewQueueQuery, Query()],
+    _: AgronomistDep,
+    session: SessionDep,
+) -> Page[DiagnosisRecordRead]:
+    items, total = await DiagnosisRepository(session).list_all(
+        query,
+        DiagnosisFilter(
+            query.disease,
+            query.vineyard_id,
+            query.date_from,
+            query.date_to,
+            query.reviewed,
+        ),
+    )
+    return Page.of([to_record(item, with_owner=True) for item in items], total, query)
+
+
+@router.get(
     "/{diagnosis_id}/image",
     summary="Фото проверки",
     response_class=Response,
@@ -110,7 +151,7 @@ async def diagnosis_image(
     session: SessionDep,
     storage: StorageDep,
 ) -> Response:
-    result = await DiagnosisRepository(session).get_for_owner(user.id, diagnosis_id)
+    result = await visible(DiagnosisRepository(session), user, diagnosis_id)
     data = await run_in_threadpool(storage.get, result.image.storage_key)
     # Фото проверки не меняется: браузер может держать его в кэше
     return Response(
@@ -155,7 +196,7 @@ async def diagnosis_overlay(
     session: SessionDep,
     storage: StorageDep,
 ) -> Response:
-    result = await DiagnosisRepository(session).get_for_owner(user.id, diagnosis_id)
+    result = await visible(DiagnosisRepository(session), user, diagnosis_id)
     key = result.heatmap_key if overlay == "heatmap" else result.lesion_key
     if key is None:
         raise NotFoundError("Наложение не сохранено")
@@ -168,7 +209,7 @@ async def diagnosis_overlay(
 
 
 # Заключение агронома (pr-052): подтвердить диагноз модели или исправить его.
-# Агроном смотрит свои проверки — фото, которые снял в поле сам
+# Агроном работает с проверками всех виноградарей (очередь /review-queue)
 @router.put(
     "/{diagnosis_id}/review",
     summary="Заключение агронома по проверке",
@@ -184,13 +225,13 @@ async def review_diagnosis(
     session: SessionDep,
 ) -> DiagnosisRecordRead:
     repository = DiagnosisRepository(session)
-    result = await repository.get_for_owner(user.id, diagnosis_id)
+    result = await repository.get_any(diagnosis_id)
     result.expert_class = data.disease
     result.expert_comment = data.comment
     result.reviewed_by_id = user.id
     result.reviewed_at = datetime.now(UTC)
     await session.commit()
-    return to_record(await repository.get_for_owner(user.id, diagnosis_id))
+    return to_record(await repository.get_any(diagnosis_id), with_owner=True)
 
 
 @router.delete(
@@ -205,7 +246,7 @@ async def review_diagnosis(
 async def delete_review(
     diagnosis_id: uuid.UUID, user: AgronomistDep, session: SessionDep
 ) -> None:
-    result = await DiagnosisRepository(session).get_for_owner(user.id, diagnosis_id)
+    result = await DiagnosisRepository(session).get_any(diagnosis_id)
     result.expert_class = None
     result.expert_comment = None
     result.reviewed_by_id = None

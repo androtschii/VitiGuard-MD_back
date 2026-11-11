@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from conftest import set_role
 from diagnosis_model import build_model, build_segmenter, gps_photo, photo
 from fastapi.testclient import TestClient
 from memory_storage import MemoryStorage
@@ -352,20 +353,21 @@ async def test_failed_commit_removes_photo() -> None:
 
 
 def login_agronomist(
-    client: TestClient, email: str = "agro@example.md"
+    client: TestClient, run_sql: RunSql, email: str = "agro@example.md"
 ) -> dict[str, str]:
     credentials = {**CREDENTIALS, "email": email}
     client.post(
         "/api/v1/auth/register",
-        json={**credentials, "full_name": "Мария", "role": "agronomist"},
+        json={**credentials, "full_name": "Мария"},
     )
+    set_role(run_sql, email, "agronomist")
     token = client.post("/api/v1/auth/login", json=credentials).json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.mark.integration
 def test_agronomist_reviews_diagnosis(client: TestClient, run_sql: RunSql) -> None:
-    headers = login_agronomist(client)
+    headers = login_agronomist(client, run_sql)
     saved = diagnose(client, headers, save="true")
     url = f"/api/v1/diagnoses/{saved['id']}/review"
 
@@ -402,22 +404,25 @@ def test_agronomist_reviews_diagnosis(client: TestClient, run_sql: RunSql) -> No
 
 
 @pytest.mark.integration
-def test_review_rules(client: TestClient) -> None:
+def test_review_rules(client: TestClient, run_sql: RunSql) -> None:
     grower = login(client)
     own = diagnose(client, grower, save="true")
-    agronomist = login_agronomist(client)
+    agronomist = login_agronomist(client, run_sql)
     url = f"/api/v1/diagnoses/{own['id']}/review"
 
     # Простому пользователю заключение недоступно
     assert client.put(url, headers=grower, json={"disease": "esca"}).status_code == 403
-    # Чужую проверку агроном не видит
     assert (
-        client.put(url, headers=agronomist, json={"disease": "esca"}).status_code == 404
+        client.get("/api/v1/diagnoses/review-queue", headers=grower).status_code == 403
     )
-    assert client.delete(url, headers=agronomist).status_code == 404
-    mine = diagnose(client, agronomist, save="true")
+    # Несуществующая проверка
+    missing = "/api/v1/diagnoses/00000000-0000-0000-0000-000000000000/review"
+    assert (
+        client.put(missing, headers=agronomist, json={"disease": "esca"}).status_code
+        == 404
+    )
     bad = client.put(
-        f"/api/v1/diagnoses/{mine['id']}/review",
+        f"/api/v1/diagnoses/{own['id']}/review",
         headers=agronomist,
         json={"disease": "Не болезнь"},
     )
@@ -458,3 +463,49 @@ def test_not_a_grape_leaf_is_not_saved(
     assert len(storage.files) == 1
     history = client.get("/api/v1/diagnoses", headers=headers).json()
     assert [item["id"] for item in history["items"]] == [leaf["id"]]
+
+
+@pytest.mark.integration
+def test_agronomist_review_queue(client: TestClient, run_sql: RunSql) -> None:
+    grower = login(client)
+    first = diagnose(client, grower, save="true")
+    second = diagnose(client, grower, save="true")
+    agronomist = login_agronomist(client, run_sql)
+    queue = "/api/v1/diagnoses/review-queue"
+
+    # Проверки виноградаря попадают в очередь агронома с именем владельца
+    waiting = client.get(queue, headers=agronomist).json()
+    assert waiting["total"] == 2
+    assert {item["owner_name"] for item in waiting["items"]} == {"Ион"}
+    # В обычной истории имени владельца нет: это его собственные проверки
+    own = client.get("/api/v1/diagnoses", headers=grower).json()["items"]
+    assert {item["owner_name"] for item in own} == {None}
+
+    # Агроном видит фото и даёт заключение по чужой проверке
+    url = f"/api/v1/diagnoses/{first['id']}"
+    assert client.get(f"{url}/image", headers=agronomist).status_code == 200
+    reviewed = client.put(
+        f"{url}/review",
+        headers=agronomist,
+        json={"disease": "downy_mildew", "comment": "Пятна снизу листа"},
+    ).json()
+    assert reviewed["owner_name"] == "Ион"
+    assert reviewed["review"]["reviewer"] == "Мария"
+
+    # Проверка с заключением уходит из очереди ожидающих
+    assert [i["id"] for i in client.get(queue, headers=agronomist).json()["items"]] == [
+        second["id"]
+    ]
+    done = client.get(queue, headers=agronomist, params={"reviewed": "true"}).json()
+    assert [item["id"] for item in done["items"]] == [first["id"]]
+    # Виноградарь видит заключение в своей истории
+    mine = client.get("/api/v1/diagnoses", headers=grower).json()["items"]
+    assert {i["id"]: i["review"] for i in mine}[first["id"]]["disease"] == (
+        "downy_mildew"
+    )
+
+    # Удалить чужую проверку агроном не может
+    assert client.delete(url, headers=agronomist).status_code == 404
+    # Заключение агроном может отозвать
+    assert client.delete(f"{url}/review", headers=agronomist).status_code == 204
+    assert client.get(queue, headers=agronomist).json()["total"] == 2

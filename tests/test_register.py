@@ -24,18 +24,16 @@ def payload(**overrides: Any) -> dict[str, Any]:
 
 
 def test_registration_creates_user(api_client: TestClient, run_sql: RunSql) -> None:
-    response = api_client.post(URL, json=payload(role="agronomist"))
+    response = api_client.post(URL, json=payload())
 
     assert response.status_code == 201
     body = response.json()
     assert body["email"] == "grower@example.md"
     assert body["full_name"] == "Андрей Бахов"
-    assert body["role"] == "agronomist"
+    assert body["role"] == "user"
     assert body["is_active"] is True
     assert {"id", "created_at", "updated_at"} <= set(body)
-    assert run_sql("SELECT email, role FROM users") == [
-        ("grower@example.md", "agronomist")
-    ]
+    assert run_sql("SELECT email, role FROM users") == [("grower@example.md", "user")]
 
 
 def test_response_never_contains_password_or_hash(api_client: TestClient) -> None:
@@ -106,6 +104,7 @@ def test_service_keeps_working_after_conflict(api_client: TestClient) -> None:
 @pytest.mark.parametrize(
     "overrides",
     [
+        {"role": "agronomist"},
         {"role": "admin"},
         {"role": "superuser"},
         {"email": "grower"},

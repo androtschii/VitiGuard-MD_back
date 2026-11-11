@@ -5,6 +5,7 @@ from collections.abc import Callable
 
 import pytest
 import shapefile
+from conftest import set_role
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
@@ -721,7 +722,7 @@ def test_foreign_vineyard_cannot_be_changed(
 
 
 def test_deleting_variety_keeps_vineyards(
-    api_client: TestClient, headers: dict[str, str]
+    api_client: TestClient, headers: dict[str, str], run_sql: RunSql
 ) -> None:
     api_client.post(
         "/api/v1/auth/register",
@@ -729,9 +730,9 @@ def test_deleting_variety_keeps_vineyards(
             "email": "agro2@example.md",
             "password": "secret123",
             "full_name": "Агроном",
-            "role": "agronomist",
         },
     )
+    set_role(run_sql, "agro2@example.md", "agronomist")
     agro = api_client.post(
         "/api/v1/auth/login",
         json={"email": "agro2@example.md", "password": "secret123"},

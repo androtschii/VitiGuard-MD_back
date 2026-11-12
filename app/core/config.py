@@ -11,6 +11,9 @@ Environment = Literal["local", "test", "staging", "production"]
 # staging и production оно запрещено
 DEV_SECRET_KEY = "dev-only-insecure-secret-key-do-not-use-in-production"
 MIN_SECRET_KEY_LENGTH = 32
+# Пароли из compose.yaml и .env.example: годятся только для машины разработчика
+DEV_DATABASE_PASSWORD = "vitiguard"
+DEV_S3_SECRET_KEY = "vitiguard-secret"
 
 
 class Settings(BaseSettings):
@@ -135,7 +138,7 @@ class Settings(BaseSettings):
     # Ключи по умолчанию — только для локальной разработки
     s3_endpoint: str = "127.0.0.1:9000"
     s3_access_key: str = "vitiguard"
-    s3_secret_key: SecretStr = SecretStr("vitiguard-secret")
+    s3_secret_key: SecretStr = SecretStr(DEV_S3_SECRET_KEY)
     s3_bucket: str = "leaf-images"
     s3_secure: bool = False
 
@@ -148,6 +151,24 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"В окружении {self.environment} нужен собственный secret_key "
                 f"не короче {MIN_SECRET_KEY_LENGTH} символов"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def check_production_passwords(self) -> Self:
+        """В production пароли базы и хранилища фото — свои: с паролями из
+        примера настроек любой, кто читал репозиторий, вошёл бы в базу."""
+        if self.environment != "production":
+            return self
+        if self.database_url.hosts()[0].get("password") == DEV_DATABASE_PASSWORD:
+            raise ValueError(
+                "В production нужен собственный пароль базы данных "
+                "(POSTGRES_PASSWORD), а не пароль из примера"
+            )
+        if self.s3_secret_key.get_secret_value() == DEV_S3_SECRET_KEY:
+            raise ValueError(
+                "В production нужен собственный ключ хранилища фото "
+                "(S3_SECRET_KEY), а не ключ из примера"
             )
         return self
 

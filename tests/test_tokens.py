@@ -225,6 +225,11 @@ def test_unauthorized_response_names_the_scheme() -> None:
     assert response.json() == {"detail": "Недействительный токен"}
 
 
+PROD_DATABASE_URL = (
+    "postgresql+asyncpg://vitiguard:own-strong-password@db:5432/vitiguard"
+)
+
+
 class TestSecretKeyValidation:
     def test_development_key_is_allowed_locally_and_in_tests(self) -> None:
         environments: tuple[Environment, ...] = ("local", "test")
@@ -246,6 +251,8 @@ class TestSecretKeyValidation:
             _env_file=None,
             environment="production",
             secret_key="k" * 48,  # type: ignore[arg-type]
+            database_url=PROD_DATABASE_URL,  # type: ignore[arg-type]
+            s3_secret_key="s" * 40,  # type: ignore[arg-type]
         )
 
         assert settings.secret_key.get_secret_value() == "k" * 48
@@ -264,3 +271,29 @@ class TestSecretKeyValidation:
 
         with pytest.raises(ValidationError):
             Settings(_env_file=None)
+
+
+class TestProductionPasswords:
+    def base(self, **overrides: object) -> dict[str, object]:
+        return {
+            "_env_file": None,
+            "environment": "production",
+            "secret_key": "k" * 48,
+            "database_url": PROD_DATABASE_URL,
+            "s3_secret_key": "s" * 40,
+            **overrides,
+        }
+
+    def test_own_passwords_are_accepted(self) -> None:
+        Settings(**self.base())  # type: ignore[arg-type]
+
+    def test_example_database_password_is_forbidden(self) -> None:
+        with pytest.raises(ValidationError, match="пароль базы данных"):
+            Settings(**self.base(database_url="postgresql+asyncpg://vitiguard:vitiguard@db:5432/vitiguard"))  # type: ignore[arg-type]
+
+    def test_example_storage_key_is_forbidden(self) -> None:
+        with pytest.raises(ValidationError, match="ключ хранилища"):
+            Settings(**self.base(s3_secret_key="vitiguard-secret"))  # type: ignore[arg-type]
+
+    def test_example_passwords_are_fine_on_staging(self) -> None:
+        Settings(**self.base(environment="staging", database_url="postgresql+asyncpg://vitiguard:vitiguard@db:5432/vitiguard", s3_secret_key="vitiguard-secret"))  # type: ignore[arg-type]

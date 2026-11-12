@@ -32,7 +32,12 @@ def test_security_headers_on_regular_and_error_responses() -> None:
 
 
 def test_hsts_only_in_production() -> None:
-    with make_client(environment="production", secret_key="s" * 40) as client:
+    with make_client(
+        environment="production",
+        secret_key="s" * 40,
+        database_url="postgresql+asyncpg://vitiguard:own-password@db:5432/vitiguard",
+        s3_secret_key="k" * 40,
+    ) as client:
         response = client.get("/healthz")
 
     assert response.headers["Strict-Transport-Security"] == (

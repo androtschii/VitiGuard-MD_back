@@ -53,7 +53,11 @@ def read_leaf_image(data: bytes) -> Image.Image:
     except OSError as error:
         raise BadRequestError("Файл изображения повреждён") from error
     # Фото с телефона хранят поворот в EXIF: без его учёта лист оказался бы на боку
-    return ImageOps.exif_transpose(image)
+    turned = ImageOps.exif_transpose(image)
+    # Pillow 13 возвращает копию без формата, а по формату выбираются
+    # расширение и тип файла в хранилище
+    turned.format = image.format
+    return turned
 
 
 def _degrees(value: Any, ref: Any, negative: str) -> float:

@@ -4,10 +4,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, File, Form, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from fastapi.concurrency import run_in_threadpool
 
 from app.api.deps import CurrentUserDep, SettingsDep
+from app.api.rate_limit import DIAGNOSE_LIMIT, per_user
 from app.core.errors import BadRequestError, PayloadTooLargeError
 from app.ml.model_file import describe_robot_model
 from app.schemas.errors import ErrorResponse
@@ -16,6 +17,8 @@ from app.schemas.robot import (
     RobotTelemetryCreate,
     RobotTelemetryRead,
 )
+from app.services.diagnosis import read_leaf_image
+from app.services.diagnosis_history import EXTENSIONS
 
 router = APIRouter(
     prefix="/robot",
@@ -83,11 +86,14 @@ def _save_uploaded_frame(
 
 @router.post(
     "/active-learning/upload",
+    dependencies=[Depends(per_user(DIAGNOSE_LIMIT))],
     status_code=status.HTTP_201_CREATED,
     summary="Выгрузка сложных кадров (Active Learning) с робота на сервер",
     response_model=HardSampleUploadResult,
     responses={
+        status.HTTP_400_BAD_REQUEST: {"model": ErrorResponse},
         status.HTTP_413_CONTENT_TOO_LARGE: {"model": ErrorResponse},
+        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE: {"model": ErrorResponse},
     },
 )
 async def upload_active_learning_frame(
@@ -108,6 +114,9 @@ async def upload_active_learning_frame(
     content = await image.read(MAX_UPLOAD_BYTES + 1)
     if len(content) > MAX_UPLOAD_BYTES:
         raise PayloadTooLargeError("Файл кадра превышает лимит 15 МБ")
+    # Формат — по содержимому, а не по имени файла: иначе под видом кадра
+    # можно было бы сохранить на сервер что угодно
+    frame = await run_in_threadpool(read_leaf_image, content)
 
     try:
         meta = json.loads(metadata_json) if metadata_json else {}
@@ -118,7 +127,7 @@ async def upload_active_learning_frame(
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     sample_id = f"al_{uuid.uuid4().hex[:10]}"
-    ext = Path(image.filename or "frame.jpg").suffix or ".jpg"
+    ext = "." + EXTENSIONS.get(frame.format or "", "jpg")
     dest_path = upload_dir / f"{sample_id}{ext}"
 
     queue_log = settings.robot_upload_dir / "active_learning_queue.jsonl"

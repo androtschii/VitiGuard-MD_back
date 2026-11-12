@@ -1,0 +1,24 @@
+name: Уязвимости зависимостей
+
+# Раз в неделю и вручную: известные уязвимости в зависимостях сервера и ML
+# появляются и тогда, когда код не меняется
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
+      - name: Сервер
+        run: uv export --locked --no-hashes --format requirements-txt --no-emit-project > requirements.txt && uvx pip-audit -r requirements.txt --progress-spinner off
+      - name: ML
+        working-directory: ml
+        run: uv export --locked --no-hashes --format requirements-txt --no-emit-project > requirements.txt && uvx pip-audit -r requirements.txt --progress-spinner off

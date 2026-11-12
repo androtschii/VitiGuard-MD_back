@@ -259,3 +259,13 @@ def test_analyze_marks_not_a_leaf(tmp_path: Path) -> None:
     assert leaf.grape_leaf is True
     assert leaf.leaf_score is not None
     assert leaf.leaf_score > 0.5
+
+
+@pytest.mark.parametrize("image_format", ["JPEG", "PNG", "WEBP"])
+def test_read_keeps_format_after_exif_rotation(image_format: str) -> None:
+    # По формату выбираются расширение и тип файла в хранилище: после поворота
+    # по EXIF он должен остаться (Pillow 13 возвращает копию без формата)
+    buffer = io.BytesIO()
+    Image.new("RGB", (100, 80), (0, 120, 0)).save(buffer, image_format)
+
+    assert read_leaf_image(buffer.getvalue()).format == image_format

@@ -32,6 +32,8 @@
 
    Команда добавляет к `diagnosis.onnx` выход `features` и пишет `diagnosis.gate.json`. Отсев обучен на признаках конкретных весов: после нового экспорта модели его нужно обучить заново.
 
+   С 12.11.2026 на сервере отсев, обученный с целыми полевыми кадрами куста (`python -m vitiguard_ml.gate_field`, блокнот `ml/notebooks/gate_colab.ipynb`): прежний отсеивал снимки с несколькими листьями как «не виноград». Его метрики записаны в `diagnosis.gate.json` в поле `metrics`.
+
 Пути к моделям задаются переменными `VITIGUARD_DIAGNOSIS_MODEL_PATH` и `VITIGUARD_LESION_MODEL_PATH`.
 
 ## Модель риска

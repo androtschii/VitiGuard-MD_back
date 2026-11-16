@@ -13,6 +13,7 @@ from app.api.rate_limit import (
 from app.core.config import Settings
 from app.core.tokens import IssuedToken
 from app.schemas.auth import (
+    DemoLoginRequest,
     LoginRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
@@ -24,6 +25,7 @@ from app.schemas.errors import ErrorResponse
 from app.schemas.user import UserRead
 from app.services.auth import (
     confirm_password_reset,
+    demo_login,
     login,
     logout,
     refresh_session,
@@ -101,6 +103,25 @@ async def log_in(
     settings: SettingsDep,
 ) -> TokenResponse:
     tokens = await login(session, data, settings)
+    set_refresh_cookie(response, tokens.refresh, settings)
+    return TokenResponse(access_token=tokens.access.token)
+
+
+# Демо-стенд: вход в роль одной кнопкой. Выключен по умолчанию, в
+# production не включается (проверка настроек при запуске)
+@router.post(
+    "/demo",
+    dependencies=[Depends(per_address(LOGIN))],
+    summary="Демо-вход в учётную запись роли",
+    responses={status.HTTP_404_NOT_FOUND: {"model": ErrorResponse}},
+)
+async def log_in_demo(
+    data: DemoLoginRequest,
+    response: Response,
+    session: SessionDep,
+    settings: SettingsDep,
+) -> TokenResponse:
+    tokens = await demo_login(session, data.role, settings)
     set_refresh_cookie(response, tokens.refresh, settings)
     return TokenResponse(access_token=tokens.access.token)
 

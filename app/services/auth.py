@@ -6,7 +6,12 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
-from app.core.errors import BadRequestError, ForbiddenError, UnauthorizedError
+from app.core.errors import (
+    BadRequestError,
+    ForbiddenError,
+    NotFoundError,
+    UnauthorizedError,
+)
 from app.core.security import ahash_password, averify_and_upgrade
 from app.core.tokens import (
     IssuedToken,
@@ -59,6 +64,31 @@ async def register_user(session: AsyncSession, data: RegisterRequest) -> User:
     # только отправляет изменения в базу)
     await session.commit()
     return user
+
+
+# Учётные записи демо-стенда (tools/demo_seed.py) по ролям
+DEMO_ACCOUNTS = {
+    "user": "fermer@vitiguard.md",
+    "agronomist": "agronom@vitiguard.md",
+    "admin": "admin@vitiguard.md",
+}
+
+
+async def demo_login(
+    session: AsyncSession, role: str, settings: Settings
+) -> AuthSession:
+    """Вход без пароля в демо-аккаунт роли. Работает, только если демо-вход
+    включён в настройках; иначе — как несуществующий адрес."""
+    if not settings.demo_login_enabled:
+        raise NotFoundError("Демо-вход выключен")
+    user = await UserRepository(session).get_by_email(DEMO_ACCOUNTS[role])
+    if user is None or not user.is_active or user.role.value != role:
+        raise NotFoundError(
+            "Демо-аккаунт этой роли не создан: запустите tools/demo_seed.py"
+        )
+    auth_session = await issue_tokens(session, user, settings)
+    await session.commit()
+    return auth_session
 
 
 async def login(

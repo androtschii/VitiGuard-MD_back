@@ -13,6 +13,7 @@ def test_info(client: TestClient) -> None:
         "name": "VitiGuard MD API",
         "version": __version__,
         "environment": "test",
+        "demo_login": False,
     }
 
 

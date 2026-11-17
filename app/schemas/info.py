@@ -8,3 +8,5 @@ class AppInfo(ResponseSchema):
     name: str
     version: str
     environment: Environment
+    # Включён ли демо-вход: страница входа показывает кнопки ролей
+    demo_login: bool = False

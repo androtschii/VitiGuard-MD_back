@@ -74,6 +74,12 @@ class RegisterRequest(RequestSchema):
     role: Literal["user"] = "user"
 
 
+class DemoLoginRequest(RequestSchema):
+    """Демо-вход: роль, под которой войти."""
+
+    role: Literal["user", "agronomist", "admin"]
+
+
 class PasswordResetRequest(RequestSchema):
     """Запрос письма со ссылкой на сброс пароля."""
 

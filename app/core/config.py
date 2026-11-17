@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     # Ключ подписи JWT (HS256): тот, кто его знает, может выписать токен любому
     # пользователю. Задаётся в окружении: python -c "import secrets; print(secrets.token_urlsafe(48))"
     secret_key: SecretStr = SecretStr(DEV_SECRET_KEY)
+    # Демо-вход без пароля в учётные записи для показа (fermer, agronom,
+    # admin @vitiguard.md). Только для стенда на своём компьютере: в
+    # production сервер с ним не запустится
+    demo_login_enabled: bool = False
     # Access-токен живёт недолго: его нельзя отозвать, а украденный перестаёт работать
     # сам. Refresh-токен живёт долго, но хранится в БД и отзывается
     access_token_ttl_minutes: int = Field(default=15, gt=0)
@@ -152,6 +156,12 @@ class Settings(BaseSettings):
                 f"В окружении {self.environment} нужен собственный secret_key "
                 f"не короче {MIN_SECRET_KEY_LENGTH} символов"
             )
+        return self
+
+    @model_validator(mode="after")
+    def check_demo_login(self) -> Self:
+        if self.environment == "production" and self.demo_login_enabled:
+            raise ValueError("В production демо-вход без пароля включать нельзя")
         return self
 
     @model_validator(mode="after")

@@ -13,4 +13,5 @@ async def get_info(settings: SettingsDep) -> AppInfo:
         name=settings.app_name,
         version=__version__,
         environment=settings.environment,
+        demo_login=settings.demo_login_enabled,
     )

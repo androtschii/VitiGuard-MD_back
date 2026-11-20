@@ -1,7 +1,7 @@
 from dataclasses import replace
 from pathlib import Path
 
-from vitiguard_ml.data.combine import combine
+from vitiguard_ml.data.combine import DEFAULT_SOURCES, combine
 from vitiguard_ml.data.manifest import ManifestRow, write_manifest
 
 
@@ -55,3 +55,47 @@ def test_copies_with_different_labels_are_reported(tmp_path: Path) -> None:
 
     assert len(rows) == 1
     assert report.conflicting_labels == [("first/healthy/a.jpg", "second/esca/a.jpg")]
+
+
+def test_drop_conflicts_removes_both_copies(tmp_path: Path) -> None:
+    write_manifest(
+        [
+            replace(row("a", "healthy", "s1", "d1"), source="first"),
+            replace(row("b", "healthy", "s2", "d2"), source="first"),
+        ],
+        tmp_path / "first" / "manifest.csv",
+    )
+    write_manifest(
+        [replace(row("a", "esca", "s1", "d1"), source="second")],
+        tmp_path / "second" / "manifest.csv",
+    )
+
+    rows, report = combine(tmp_path, ["first", "second"], drop_conflicts=True)
+
+    assert [r.path for r in rows] == ["first/healthy/b.jpg"]
+    assert report.dropped_conflicts == 1
+    assert report.kept[("healthy", "first")] == 1
+
+
+def test_default_sources_includes_gvlid() -> None:
+    assert DEFAULT_SOURCES == ["plantvillage", "ngld", "gvlid"]
+
+
+def test_combine_copies_source_vineyards_with_prefix(tmp_path: Path) -> None:
+    write_manifest(
+        [replace(row("leaf1", "black_rot", "sha1", "dh1"), source="gvlid")],
+        tmp_path / "gvlid" / "manifest.csv",
+    )
+    (tmp_path / "gvlid" / "vineyards.csv").write_text(
+        "path,vineyard\nblack_rot/leaf1.jpg,Vineyard_05\n", encoding="utf-8"
+    )
+
+    rows, _ = combine(tmp_path, ["gvlid"])
+
+    assert len(rows) == 1
+    assert rows[0].path == "gvlid/black_rot/leaf1.jpg"
+    combined_vineyards = tmp_path / "vineyards.csv"
+    assert combined_vineyards.exists()
+    content = combined_vineyards.read_text(encoding="utf-8").splitlines()
+    assert content[0] == "path,vineyard"
+    assert content[1] == "gvlid/black_rot/leaf1.jpg,Vineyard_05"

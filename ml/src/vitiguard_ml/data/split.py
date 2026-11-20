@@ -18,33 +18,71 @@ SPLITS = ("train", "val", "test")
 
 
 def split_rows(
-    rows: list[ManifestRow], ratios: SplitConfig, seed: int
+    rows: list[ManifestRow],
+    ratios: SplitConfig,
+    seed: int,
+    groups: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """Возвращает выборку для каждого пути.
 
-    Стратификация по паре (класс, источник): в каждую выборку попадает та же
-    доля каждого класса из каждого источника. Иначе, например, почти все
-    здоровые листья из NGLD могли бы оказаться в обучении, а в тесте — только
-    из PlantVillage, и оценка качества была бы искажена. Повторы уже удалены
-    при объединении, поэтому копии одного снимка в разные выборки не попадут."""
-    strata: dict[tuple[str, str], list[str]] = defaultdict(list)
-    for row in sorted(rows, key=lambda r: r.path):
-        strata[(row.label, row.source)].append(row.path)
+    Если задан словарь groups, все снимки с одинаковой группой попадают в одну
+    выборку (детерминированное распределение групп по seed в долях ratios).
+    Остальные строки распределяются со стратификацией по паре (класс, источник)."""
+    grouped_paths: dict[str, list[str]] = defaultdict(list)
+    ungrouped_rows: list[ManifestRow] = []
 
-    generator = random.Random(seed)
+    for row in sorted(rows, key=lambda r: r.path):
+        group = groups.get(row.path) if groups else None
+        if group:
+            grouped_paths[group].append(row.path)
+        else:
+            ungrouped_rows.append(row)
+
     assignment: dict[str, str] = {}
-    for key in sorted(strata):
-        paths = strata[key]
-        generator.shuffle(paths)
-        n_train = round(len(paths) * ratios.train)
-        n_val = round(len(paths) * ratios.val)
-        for index, path in enumerate(paths):
-            if index < n_train:
-                assignment[path] = "train"
-            elif index < n_train + n_val:
-                assignment[path] = "val"
-            else:
-                assignment[path] = "test"
+
+    if grouped_paths:
+        group_generator = random.Random(seed)
+        group_names = sorted(grouped_paths.keys())
+        group_generator.shuffle(group_names)
+
+        total_grouped = sum(len(paths) for paths in grouped_paths.values())
+        targets = {
+            "train": total_grouped * ratios.train,
+            "val": total_grouped * ratios.val,
+            "test": total_grouped * ratios.test,
+        }
+        assigned_counts: dict[str, int] = {"train": 0, "val": 0, "test": 0}
+
+        for group in group_names:
+            paths = grouped_paths[group]
+            size = len(paths)
+            chosen_split = max(
+                ["train", "val", "test"],
+                key=lambda s: targets[s] - assigned_counts[s],
+            )
+            assigned_counts[chosen_split] += size
+            for path in paths:
+                assignment[path] = chosen_split
+
+    if ungrouped_rows:
+        strata: dict[tuple[str, str], list[str]] = defaultdict(list)
+        for row in sorted(ungrouped_rows, key=lambda r: r.path):
+            strata[(row.label, row.source)].append(row.path)
+
+        generator = random.Random(seed)
+        for key in sorted(strata):
+            paths = strata[key]
+            generator.shuffle(paths)
+            n_train = round(len(paths) * ratios.train)
+            n_val = round(len(paths) * ratios.val)
+            for index, path in enumerate(paths):
+                if index < n_train:
+                    assignment[path] = "train"
+                elif index < n_train + n_val:
+                    assignment[path] = "val"
+                else:
+                    assignment[path] = "test"
+
     return assignment
 
 
@@ -94,6 +132,37 @@ def build_stats(
     )
 
 
+def read_groups(processed_root: Path, rows: list[ManifestRow]) -> dict[str, str]:
+    """Читает vineyards.csv источников и возвращает группы вида <source>:<vineyard>."""
+    groups: dict[str, str] = {}
+    row_sources = {row.path: row.source for row in rows}
+
+    combined_vineyards = processed_root / "vineyards.csv"
+    if combined_vineyards.exists():
+        with combined_vineyards.open(newline="", encoding="utf-8") as file:
+            for entry in csv.DictReader(file):
+                path = entry.get("path")
+                vineyard = entry.get("vineyard")
+                if path and vineyard:
+                    source = row_sources.get(path, path.split("/")[0])
+                    groups[path] = f"{source}:{vineyard}"
+
+    sources = {row.source for row in rows}
+    for source in sources:
+        source_vineyards = processed_root / source / "vineyards.csv"
+        if source_vineyards.exists():
+            with source_vineyards.open(newline="", encoding="utf-8") as file:
+                for entry in csv.DictReader(file):
+                    path = entry.get("path")
+                    vineyard = entry.get("vineyard")
+                    if path and vineyard:
+                        full_path = path if path in row_sources else f"{source}/{path}"
+                        if full_path in row_sources and full_path not in groups:
+                            groups[full_path] = f"{source}:{vineyard}"
+
+    return groups
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("configs/base.yaml"))
@@ -102,7 +171,8 @@ def main() -> None:
 
     config = load_config(args.config)
     rows = read_manifest(args.processed / "manifest.csv")
-    assignment = split_rows(rows, config.split, config.seed)
+    groups = read_groups(args.processed, rows)
+    assignment = split_rows(rows, config.split, config.seed, groups=groups or None)
     write_splits(rows, assignment, args.processed / "splits.csv")
     stats = build_stats(rows, assignment, config.classes)
     (args.processed / "class_stats.json").write_text(

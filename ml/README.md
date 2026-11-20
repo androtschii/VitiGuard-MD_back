@@ -48,6 +48,7 @@ uv run python -m vitiguard_ml.experiments --limit 24 --epochs 1 --no-pretrained 
 Этапы: `classify` — обучение и сравнение ResNet-50, EfficientNet-B0 и ViT-B/16 на тестовой выборке и полевом наборе HERMOS; `explain` — Grad-CAM; `segment` — маски поражения OpenCV и U-Net; `export` — лучшая модель в ONNX. Результаты — в `--out` (по умолчанию `results/`): `results.json`, рисунки в `figures/`, веса в `models/`.
 
 На GPU — ноутбук `notebooks/train_colab.ipynb` для Google Colab: архив `ml/` с `data/processed` загружается на Google Диск, ноутбук распаковывает его, ставит зависимости, запускает этапы и сохраняет результаты на Диск.
+Дообучение на полевом наборе GVLiD — блокнот `notebooks/finetune_colab.ipynb` (пересборка разбиения по виноградникам, обучение EfficientNet-B0 с аугментациями полевой съёмки, сравнение с базовой версией).
 
 ## Прогноз риска
 

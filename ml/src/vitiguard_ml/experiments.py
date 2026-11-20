@@ -187,7 +187,26 @@ def stage_classify(args: argparse.Namespace, config: Any, device: str) -> None:
             f"{name}: полевые снимки (HERMOS)",
             out / "figures" / f"cm_{name}_field.png",
         )
-        results["classification"][name] = {
+        source_reports = by_source(test_samples, truths, predictions, classes)
+        gvlid_test = source_reports.get("gvlid")
+        if gvlid_test is not None:
+            plot_confusion(
+                gvlid_test,
+                f"{name}: тестовая выборка GVLiD",
+                out / "figures" / f"cm_{name}_gvlid_test.png",
+            )
+        gvlid_count = sum(1 for sample in test_samples if sample.source == "gvlid")
+        gvlid_share = gvlid_count / len(test_samples) if test_samples else 0.0
+        print(
+            f"Полевые метрики: HERMOS (полевой тест) macro-F1={field['macro_f1']:.3f}, acc={field['accuracy']:.3f} | "
+            f"Доля GVLiD в тесте: {gvlid_share:.1%} ({gvlid_count}/{len(test_samples)})"
+            + (
+                f" | GVLiD test macro-F1={gvlid_test['macro_f1']:.3f}, acc={gvlid_test['accuracy']:.3f}"
+                if gvlid_test is not None
+                else ""
+            )
+        )
+        classification_entry: dict[str, Any] = {
             "timm_model": MODELS[name],
             "train": {
                 "best_epoch": trained.best_epoch,
@@ -196,17 +215,26 @@ def stage_classify(args: argparse.Namespace, config: Any, device: str) -> None:
                 "history": trained.history,
             },
             "test": test,
-            "test_by_source": by_source(test_samples, truths, predictions, classes),
+            "test_by_source": source_reports,
             "field": field,
-            "parameters": parameter_count(model),
-            "size_mb": round(parameter_count(model) * 4 / 2**20, 1),
-            "latency_ms": {
-                "cpu": latency_ms(model.cpu(), size, "cpu", runs=10),
-                **(
-                    {"gpu": latency_ms(model, size, "cuda")} if device == "cuda" else {}
-                ),
-            },
         }
+        if gvlid_test is not None:
+            classification_entry["gvlid_test"] = gvlid_test
+        classification_entry.update(
+            {
+                "parameters": parameter_count(model),
+                "size_mb": round(parameter_count(model) * 4 / 2**20, 1),
+                "latency_ms": {
+                    "cpu": latency_ms(model.cpu(), size, "cpu", runs=10),
+                    **(
+                        {"gpu": latency_ms(model, size, "cuda")}
+                        if device == "cuda"
+                        else {}
+                    ),
+                },
+            }
+        )
+        results["classification"][name] = classification_entry
         histories[name] = trained.history
         save_results(out, results)
         del model

@@ -36,3 +36,17 @@ def test_results_round_trip_keeps_previous_stages(tmp_path: Path) -> None:
         "classification": {"resnet50": {"Здоровый": 1}},
         "export": {"model": "resnet50"},
     }
+
+
+def test_by_source_includes_gvlid_test_metrics() -> None:
+    samples = [
+        Sample(Path("a.jpg"), 0, "plantvillage"),
+        Sample(Path("b.jpg"), 1, "gvlid"),
+        Sample(Path("c.jpg"), 1, "gvlid"),
+    ]
+    reports = by_source(samples, [0, 1, 1], [0, 1, 0], CLASSES)
+
+    assert "gvlid" in reports
+    assert reports["gvlid"]["accuracy"] == 0.5
+    assert "macro_f1" in reports["gvlid"]
+    assert "confusion_matrix" in reports["gvlid"]

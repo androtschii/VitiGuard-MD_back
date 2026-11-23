@@ -77,6 +77,23 @@ def test_drop_conflicts_removes_both_copies(tmp_path: Path) -> None:
     assert report.kept[("healthy", "first")] == 1
 
 
+def test_exclude_skips_class_of_source(tmp_path: Path) -> None:
+    write_manifest(
+        [
+            replace(row("a", "healthy", "s1", "d1"), source="first"),
+            replace(row("b", "esca", "s2", "d2"), source="first"),
+        ],
+        tmp_path / "first" / "manifest.csv",
+    )
+
+    rows, report = combine(
+        tmp_path, ["first"], exclude=frozenset({("first", "healthy")})
+    )
+
+    assert [r.label for r in rows] == ["esca"]
+    assert report.kept[("healthy", "first")] == 0
+
+
 def test_default_sources_includes_gvlid() -> None:
     assert DEFAULT_SOURCES == ["plantvillage", "ngld", "gvlid"]
 

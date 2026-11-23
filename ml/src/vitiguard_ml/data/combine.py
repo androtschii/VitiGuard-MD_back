@@ -25,7 +25,10 @@ class CombineReport:
 
 
 def combine(
-    processed_root: Path, sources: list[str], drop_conflicts: bool = False
+    processed_root: Path,
+    sources: list[str],
+    drop_conflicts: bool = False,
+    exclude: frozenset[tuple[str, str]] = frozenset(),
 ) -> tuple[list[ManifestRow], CombineReport]:
     """Пути в общем манифесте — относительно processed_root (<источник>/<класс>/...).
 
@@ -33,13 +36,16 @@ def combine(
     пересжатый или уменьшенный). Если копии одного снимка размечены разными
     классами, это записывается в отчёт: такие снимки нужно проверить вручную.
     С drop_conflicts=True из набора убираются обе копии такого снимка: какая
-    метка верна, неизвестно, а учить модель на противоречии нельзя."""
+    метка верна, неизвестно, а учить модель на противоречии нельзя.
+    exclude — пары (источник, класс), которые в набор не берутся."""
     report = CombineReport()
     by_sha: dict[str, ManifestRow] = {}
     by_dhash: dict[str, ManifestRow] = {}
     rows: list[ManifestRow] = []
     for source in sources:
         for row in read_manifest(processed_root / source / "manifest.csv"):
+            if (source, row.label) in exclude:
+                continue
             row = replace(row, path=f"{source}/{row.path}")
             if (first := by_sha.get(row.sha256)) is not None:
                 report.exact_duplicates += 1
@@ -99,9 +105,20 @@ def main() -> None:
         action="store_true",
         help="убрать снимки, одна и та же копия которых размечена разными классами",
     )
+    parser.add_argument(
+        "--exclude",
+        nargs="+",
+        default=[],
+        metavar="ИСТОЧНИК:КЛАСС",
+        help="не брать класс источника, например gvlid:healthy",
+    )
     args = parser.parse_args()
 
-    rows, report = combine(args.processed, args.sources, args.drop_conflicts)
+    exclude = frozenset(
+        (source, label)
+        for source, label in (item.split(":", 1) for item in args.exclude)
+    )
+    rows, report = combine(args.processed, args.sources, args.drop_conflicts, exclude)
     write_manifest(rows, args.processed / "manifest.csv")
 
     labels = sorted({label for label, _ in report.kept})

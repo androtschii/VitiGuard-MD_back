@@ -132,3 +132,8 @@ def test_prepare_writes_field_crops(tmp_path: Path) -> None:
         assert (row.width, row.height) == (256, 256)
         with Image.open(tmp_path / "out" / row.path) as crop:
             assert crop.size == (256, 256)
+
+    # Вырезки одного кадра — одна группа для разбиения
+    groups = (tmp_path / "out" / "vineyards.csv").read_text(encoding="utf-8").split()
+    assert groups[0] == "path,vineyard"
+    assert sorted(line.split(",")[1] for line in groups[1:]) == ["leaf1", "leaf1"]

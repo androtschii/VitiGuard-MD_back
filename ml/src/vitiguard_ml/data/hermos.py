@@ -11,6 +11,7 @@ DOI 10.17632/j4xs3kh3fd.2
 """
 
 import argparse
+import csv
 import hashlib
 import io
 import urllib.request
@@ -133,7 +134,12 @@ def download(raw_dir: Path) -> Path:
 
 
 def prepare(archive: Path, out_root: Path) -> tuple[list[ManifestRow], Counter[str]]:
+    """Вырезки листьев по рамкам разметки. Рядом с манифестом пишется
+    vineyards.csv — тот же формат групп, что у GVLiD: здесь группа — исходный
+    кадр. Вырезки одного кадра перекрываются и снимают соседние листья, поэтому
+    при разбиении они не должны попадать в разные выборки."""
     rows: list[ManifestRow] = []
+    groups: list[tuple[str, str]] = []
     skipped: Counter[str] = Counter()
     with zipfile.ZipFile(archive) as zip_file:
         names = zip_file.namelist()
@@ -170,6 +176,7 @@ def prepare(archive: Path, out_root: Path) -> tuple[list[ManifestRow], Counter[s
                 relative = Path(label) / f"{digest[:16]}.jpg"
                 (out_root / relative).parent.mkdir(parents=True, exist_ok=True)
                 (out_root / relative).write_bytes(data)
+                groups.append((relative.as_posix(), Path(image_name).stem))
                 rows.append(
                     ManifestRow(
                         path=relative.as_posix(),
@@ -181,6 +188,11 @@ def prepare(archive: Path, out_root: Path) -> tuple[list[ManifestRow], Counter[s
                         height=OUTPUT_SIZE,
                     )
                 )
+    out_root.mkdir(parents=True, exist_ok=True)
+    with (out_root / "vineyards.csv").open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(["path", "vineyard"])
+        writer.writerows(sorted(groups))
     return rows, skipped
 
 

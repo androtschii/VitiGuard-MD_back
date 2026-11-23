@@ -128,9 +128,16 @@ def stage_classify(args: argparse.Namespace, config: Any, device: str) -> None:
     train_samples = read_samples(splits, data, classes, "train")
     val_samples = read_samples(splits, data, classes, "val")
     test_samples = read_samples(splits, data, classes, "test")
-    field_samples = read_samples(
-        data / "hermos" / "manifest.csv", data / "hermos", classes
-    )
+    # Если HERMOS вошёл в разбиение (часть кадров — в обучении), полевой тест —
+    # только его отложенные кадры; иначе — весь HERMOS, как раньше
+    held_out = [sample for sample in test_samples if sample.source == "hermos"]
+    if held_out:
+        field_samples = held_out
+        test_samples = [s for s in test_samples if s.source != "hermos"]
+    else:
+        field_samples = read_samples(
+            data / "hermos" / "manifest.csv", data / "hermos", classes
+        )
     if args.limit:
         # Короткий прогон для проверки, что всё запускается
         rng = random.Random(0)
@@ -240,6 +247,26 @@ def stage_classify(args: argparse.Namespace, config: Any, device: str) -> None:
         del model
         if device == "cuda":
             torch.cuda.empty_cache()
+    baseline = getattr(args, "baseline_weights", None)
+    if baseline is not None:
+        # Прежняя модель на тех же полевых снимках: без этого сравнение «до и
+        # после» шло бы на разных наборах
+        if Path(baseline).exists():
+            model = create_model("efficientnet_b0", len(classes), pretrained=False)
+            model.load_state_dict(torch.load(baseline, map_location="cpu"))
+            model.to(device)
+            truths, predictions, _ = predict(model, loaders["field"], device)
+            results["baseline_field"] = classification_report(
+                truths, predictions, classes
+            )
+            save_results(out, results)
+            print(
+                "Прежняя модель на том же полевом тесте: "
+                f"macro-F1={results['baseline_field']['macro_f1']:.3f}, "
+                f"acc={results['baseline_field']['accuracy']:.3f}"
+            )
+        else:
+            print(f"Нет весов прежней модели {baseline}: сравнение пропущено")
     all_histories = {
         name: entry["train"]["history"]
         for name, entry in results["classification"].items()
@@ -428,6 +455,12 @@ def main(argv: list[str] | None = None) -> None:
         "--limit", type=int, default=0, help="короткий прогон на N снимках"
     )
     parser.add_argument("--no-pretrained", action="store_true")
+    parser.add_argument(
+        "--baseline-weights",
+        type=Path,
+        default=None,
+        help="веса прежней модели (.pt): оценить её на том же полевом тесте",
+    )
     args = parser.parse_args(argv)
 
     config = load_config(Path(args.config))

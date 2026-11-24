@@ -16,10 +16,17 @@ from vitiguard_ml.data.vine import (
     missing_sources,
     prepare_inesc,
     prepare_inesc_second_camera,
+    prepare_negatives,
     voc_to_yolo,
     write_config,
 )
-from vitiguard_ml.robot.vine import accept, best_entry, class_scores
+from vitiguard_ml.robot.vine import (
+    accept,
+    accept_with_negatives,
+    best_entry,
+    class_scores,
+    false_rate,
+)
 
 VOC = b"""<annotation><size><width>100</width><height>50</height></size>
 <object><name>trunk</name><bndbox><xmin>10</xmin><ymin>5</ymin><xmax>30</xmax><ymax>45</ymax></bndbox></object>
@@ -93,7 +100,7 @@ def test_only_missing_sources_are_built(tmp_path: Path) -> None:
 
     write_config(tmp_path, {"inesc": {"test": 1}, "wgisd": {"test": 1}})
 
-    assert missing_sources(tmp_path) == ["inesc_second_camera"]
+    assert missing_sources(tmp_path) == ["inesc_second_camera", "negatives"]
 
 
 def test_near_duplicates_detection_by_dhash(tmp_path: Path) -> None:
@@ -156,3 +163,54 @@ def test_best_entry_is_last_accepted() -> None:
 
     assert best_entry(registry) == registry[0]
     assert best_entry([]) is None
+
+
+def test_negatives_go_to_train_and_val_with_empty_labels(tmp_path: Path) -> None:
+    raw, out = tmp_path / "raw", tmp_path / "out"
+    for split, count in (("train", 2), ("val", 1)):
+        folder = raw / "negatives" / split
+        folder.mkdir(parents=True)
+        for index in range(count):
+            image = Image.new("RGB", (64, 64), (40 * index + 20, 120, 30))
+            image.save(folder / f"leaf{index}.jpg")
+    (raw / "negatives" / "notes.txt").write_text("не изображение")
+
+    counts = prepare_negatives(raw, out)
+
+    assert counts == {"train": 2, "val": 1, "test": 0}
+    assert (out / "labels" / "train" / "neg_leaf0.txt").read_text() == ""
+    assert (out / "images" / "val" / "neg_leaf0.jpg").exists()
+    assert not (out / "images" / "test").exists()
+
+
+def test_negatives_skip_near_copies_of_test_frames(tmp_path: Path) -> None:
+    raw, out = tmp_path / "raw", tmp_path / "out"
+    make_image(out / "images" / "test" / "frame.jpg", seed=1)
+    make_image(raw / "negatives" / "train" / "copy.jpg", seed=1)
+
+    assert prepare_negatives(raw, out)["train"] == 0
+
+
+def test_run_with_negatives_needs_fewer_false_boxes_without_class_drop() -> None:
+    best = {"map50_95": 0.41, "trunk_map50_95": 0.30, "bunch_map50_95": 0.52}
+
+    same = {"map50_95": 0.405, "trunk_map50_95": 0.295, "bunch_map50_95": 0.515}
+    assert accept_with_negatives(same, best, 0.05, 0.30)
+    assert not accept_with_negatives(same, best, 0.30, 0.30)
+    worse = {"map50_95": 0.39, "trunk_map50_95": 0.30, "bunch_map50_95": 0.52}
+    assert not accept_with_negatives(worse, best, 0.05, 0.30)
+    weak_bunch = {"map50_95": 0.41, "trunk_map50_95": 0.33, "bunch_map50_95": 0.50}
+    assert not accept_with_negatives(weak_bunch, best, 0.05, 0.30)
+
+
+def test_false_rate_counts_images_with_any_box(tmp_path: Path) -> None:
+    boxes = {"a.jpg": [1], "b.jpg": [], "c.jpg": [1, 2], "d.jpg": []}
+
+    class Model:
+        def predict(self, path: str, **_: object) -> list[SimpleNamespace]:
+            return [SimpleNamespace(boxes=boxes[Path(path).name])]
+
+    images = [tmp_path / name for name in boxes]
+
+    assert false_rate(Model(), images, 640) == 0.5
+    assert false_rate(Model(), [], 640) == 0.0

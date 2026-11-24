@@ -23,6 +23,8 @@ from vitiguard_ml.data.vine import CLASSES
 START_MODEL = "yolo11n.pt"
 # Класс не должен проседать больше чем на 1 пункт mAP50-95
 MAX_CLASS_DROP = 0.01
+# Порог уверенности на сайте (app/ml/vine_detector.py)
+SITE_CONFIDENCE = 0.25
 
 
 def class_scores(metrics: Any) -> dict[str, float]:
@@ -53,6 +55,40 @@ def accept(new: dict[str, float], best: dict[str, float] | None) -> bool:
         >= best.get(f"{name}_map50_95", 0.0) - MAX_CLASS_DROP
         for name in CLASSES
     )
+
+
+def accept_with_negatives(
+    new: dict[str, float],
+    best: dict[str, float],
+    new_false_rate: float,
+    best_false_rate: float,
+) -> bool:
+    """Запуск с пустыми снимками (ml/fine-07) должен убрать ложные рамки, а не
+    поднять mAP: принимается, если доля пустых снимков с рамками упала, средний
+    mAP50-95 и каждый класс просели не больше чем на 1 пункт."""
+    if new_false_rate >= best_false_rate:
+        return False
+    if new["map50_95"] < best["map50_95"] - MAX_CLASS_DROP:
+        return False
+    return all(
+        new.get(f"{name}_map50_95", 0.0)
+        >= best.get(f"{name}_map50_95", 0.0) - MAX_CLASS_DROP
+        for name in CLASSES
+    )
+
+
+def false_rate(model: Any, images: list[Path], image_size: int) -> float:
+    """Доля снимков без стволов и гроздей, на которых модель нашла хоть что-то
+    при пороге сайта (0,25, app/ml/vine_detector.py)."""
+    if not images:
+        return 0.0
+    found = 0
+    for path in images:
+        result = model.predict(
+            str(path), imgsz=image_size, conf=SITE_CONFIDENCE, verbose=False
+        )[0]
+        found += int(len(result.boxes) > 0)
+    return round(found / len(images), 4)
 
 
 def load_registry(path: Path) -> list[dict[str, Any]]:
@@ -97,7 +133,30 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             data=str(args.data), split="test", imgsz=args.image_size, plots=False
         )
     )
-    accepted = accept(scores, best["test"] if best else None)
+    negatives: dict[str, Any] | None = None
+    if args.negatives is not None:
+        images = sorted(
+            path
+            for path in Path(args.negatives).iterdir()
+            if path.suffix.lower() in {".jpg", ".jpeg", ".png"}
+        )
+        negatives = {
+            "images": len(images),
+            "false_rate": false_rate(yolo(str(trained)), images, args.image_size),
+        }
+        if best:
+            negatives["best_false_rate"] = false_rate(
+                yolo(best["weights"]), images, args.image_size
+            )
+    if negatives is not None and best and "best_false_rate" in negatives:
+        accepted = accept_with_negatives(
+            scores,
+            best["test"],
+            negatives["false_rate"],
+            negatives["best_false_rate"],
+        )
+    else:
+        accepted = accept(scores, best["test"] if best else None)
     weights = out / "models" / f"{name}.pt"
     weights.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(trained, weights)
@@ -112,6 +171,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "accepted": accepted,
         "weights": str(weights),
     }
+    if negatives is not None:
+        entry["negatives"] = negatives
     if accepted:
         exported = yolo(str(weights)).export(format="onnx", imgsz=args.image_size)
         entry["onnx"] = str(exported)
@@ -134,6 +195,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--cpu", action="store_true")
+    parser.add_argument(
+        "--negatives",
+        type=Path,
+        default=None,
+        help="папка снимков без стволов и гроздей для проверки ложных рамок",
+    )
     entry = run(parser.parse_args(argv))
     print(json.dumps(entry, ensure_ascii=False, indent=2))
 

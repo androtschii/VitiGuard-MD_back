@@ -37,6 +37,8 @@ REGISTER = Limit("register", 5, 600)
 PASSWORD_RESET = Limit("password-reset", 5, 3600)
 # Модель — самая дорогая операция; 30 фото в минуту — с запасом для работы в поле
 DIAGNOSE_LIMIT = Limit("diagnose", 30, 60)
+# Выгрузка своих данных (закон 195/2024): 10 раз в минуту на пользователя
+DATA_EXPORT = Limit("data-export", 10, 60)
 
 
 async def hit(request: Request, limit: Limit, subject: str) -> None:

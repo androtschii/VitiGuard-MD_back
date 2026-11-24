@@ -1,6 +1,16 @@
-from fastapi import APIRouter, status
+import json
 
-from app.api.deps import CacheDep, CurrentUserDep, SessionDep, SettingsDep
+from fastapi import APIRouter, Depends, Response, status
+
+from app.api.deps import (
+    CacheDep,
+    CurrentUserDep,
+    SessionDep,
+    SettingsDep,
+    StorageDep,
+)
+from app.api.rate_limit import DATA_EXPORT, LOGIN, per_address, per_user
+from app.api.routes.auth import delete_refresh_cookie
 from app.core.errors import ServiceUnavailableError
 from app.models.enums import RiskLevel
 from app.models.user import User
@@ -10,9 +20,12 @@ from app.schemas.user import (
     NotificationSettings,
     NotificationSettingsRead,
     TelegramLinkRead,
+    UserDelete,
     UserRead,
     UserUpdate,
 )
+from app.services.account import delete_account, export_account_data
+from app.services.risk import local_today
 from app.services.telegram_bot import LINK_TTL_SECONDS, create_link_code
 
 router = APIRouter(
@@ -34,6 +47,56 @@ async def update_me(
     updated = await UserRepository(session).update(user, **data.model_dump())
     await session.commit()
     return UserRead.model_validate(updated)
+
+
+@router.delete(
+    "/me",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Удаление аккаунта",
+    dependencies=[Depends(per_address(LOGIN))],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+        status.HTTP_409_CONFLICT: {"model": ErrorResponse},
+    },
+)
+async def delete_me(
+    data: UserDelete,
+    user: CurrentUserDep,
+    session: SessionDep,
+    settings: SettingsDep,
+    storage: StorageDep,
+    response: Response,
+) -> None:
+    await delete_account(session, user, data, storage)
+    delete_refresh_cookie(response, settings)
+
+
+@router.get(
+    "/me/export",
+    summary="Выгрузка своих данных",
+    dependencies=[Depends(per_user(DATA_EXPORT))],
+    response_class=Response,
+    responses={
+        status.HTTP_200_OK: {"content": {"application/json": {}}},
+        status.HTTP_401_UNAUTHORIZED: {"model": ErrorResponse},
+    },
+)
+async def export_me(
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> Response:
+    data = await export_account_data(session, user)
+    content = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+    today = local_today()
+    return Response(
+        content=content,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="vitiguard-data-{today.isoformat()}.json"'
+            )
+        },
+    )
 
 
 def to_settings(user: User) -> NotificationSettingsRead:

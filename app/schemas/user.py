@@ -1,8 +1,9 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field, computed_field
+from pydantic import Field, StringConstraints, computed_field
 
 from app.models.user import UserRole
+from app.schemas.auth import MAX_PASSWORD_LENGTH
 from app.schemas.base import EntityResponse, RequestSchema, ResponseSchema
 from app.schemas.pagination import PageParams
 
@@ -42,6 +43,17 @@ class UserUpdate(RequestSchema):
     сюда не входят: лишние поля дают 422, а не молча игнорируются."""
 
     full_name: str = Field(min_length=2, max_length=255)
+
+
+class UserDelete(RequestSchema):
+    """Подтверждение удаления аккаунта текущим паролем."""
+
+    password: Annotated[
+        str,
+        StringConstraints(
+            min_length=1, max_length=MAX_PASSWORD_LENGTH, strip_whitespace=False
+        ),
+    ]
 
 
 class TelegramLinkRead(ResponseSchema):

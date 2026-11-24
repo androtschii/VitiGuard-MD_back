@@ -222,6 +222,42 @@ def read_sources(out: Path) -> dict[str, dict[str, int]]:
     return sources
 
 
+NEGATIVES_DIR = "negatives"
+
+
+def prepare_negatives(raw: Path, out: Path) -> dict[str, int]:
+    """Снимки без стволов и гроздей (ml/fine-07): крупные планы листьев, бурые
+    и сухие листья. Для YOLO это кадры с пустым файлом разметки: модель учится
+    ничего на них не находить. Модель находила «гроздь» на сухом листе, потому
+    что в обучении были только снимки рядов, где грозди есть почти всегда.
+
+    Набор готовится заранее и лежит в raw/negatives/{train,val}. Как у других
+    поздних источников, тестовая выборка не меняется; почти-копии тестовых
+    кадров отбрасываются."""
+    reference = collect_test_hashes(out)
+    counts = {"train": 0, "val": 0, "test": 0}
+    for split in ("train", "val"):
+        folder = raw / NEGATIVES_DIR / split
+        if not folder.is_dir():
+            continue
+        paths = sorted(
+            path for path in folder.iterdir() if path.suffix.lower() in IMAGE_SUFFIXES
+        )
+        duplicates = set(check_near_duplicates(paths, reference))
+        (out / "images" / split).mkdir(parents=True, exist_ok=True)
+        (out / "labels" / split).mkdir(parents=True, exist_ok=True)
+        for path in paths:
+            if path in duplicates:
+                continue
+            name = f"neg_{path.stem}"
+            shutil.copyfile(
+                path, out / "images" / split / f"{name}{path.suffix.lower()}"
+            )
+            (out / "labels" / split / f"{name}.txt").write_text("")
+            counts[split] += 1
+    return counts
+
+
 # Порядок — порядок добавления: новый источник дописывается в конец
 SOURCES: dict[str, Callable[[Path, Path], dict[str, int]]] = {
     "inesc": lambda raw, out: prepare_inesc(raw / INESC_ARCHIVE, out),
@@ -229,6 +265,7 @@ SOURCES: dict[str, Callable[[Path, Path], dict[str, int]]] = {
     "inesc_second_camera": lambda raw, out: prepare_inesc_second_camera(
         raw / INESC_ARCHIVE, out
     ),
+    "negatives": prepare_negatives,
 }
 
 

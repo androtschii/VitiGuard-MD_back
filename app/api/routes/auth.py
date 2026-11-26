@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, Response, status
+from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 
 from app.api.deps import ResetMailerDep, SessionDep, SettingsDep
 from app.api.rate_limit import (
@@ -11,6 +11,7 @@ from app.api.rate_limit import (
     per_address,
 )
 from app.core.config import Settings
+from app.core.errors import ForbiddenError
 from app.core.tokens import IssuedToken
 from app.schemas.auth import (
     DemoLoginRequest,
@@ -107,20 +108,34 @@ async def log_in(
     return TokenResponse(access_token=tokens.access.token)
 
 
+# Cloudflare добавляет этот заголовок к каждому запросу через туннель, и снаружи
+# его не убрать: так сервер отличает публичный адрес от локального
+TUNNEL_HEADER = "cf-connecting-ip"
+
+
 # Демо-стенд: вход в роль одной кнопкой. Выключен по умолчанию, в
-# production не включается (проверка настроек при запуске)
+# production не включается (проверка настроек при запуске). Через публичный
+# туннель — только виноградарь: агроном и администратор видят чужие данные
 @router.post(
     "/demo",
     dependencies=[Depends(per_address(LOGIN))],
     summary="Демо-вход в учётную запись роли",
-    responses={status.HTTP_404_NOT_FOUND: {"model": ErrorResponse}},
+    responses={
+        status.HTTP_403_FORBIDDEN: {"model": ErrorResponse},
+        status.HTTP_404_NOT_FOUND: {"model": ErrorResponse},
+    },
 )
 async def log_in_demo(
     data: DemoLoginRequest,
+    request: Request,
     response: Response,
     session: SessionDep,
     settings: SettingsDep,
 ) -> TokenResponse:
+    if data.role != "user" and TUNNEL_HEADER in request.headers:
+        raise ForbiddenError(
+            "Демо-вход агронома и администратора доступен только на локальном стенде"
+        )
     tokens = await demo_login(session, data.role, settings)
     set_refresh_cookie(response, tokens.refresh, settings)
     return TokenResponse(access_token=tokens.access.token)

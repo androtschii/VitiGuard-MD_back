@@ -18,6 +18,7 @@ from app.models.user import User, UserRole
 from app.repositories.user import UserRepository
 from app.schemas.pagination import PageParams
 from app.tasks.mail import send_password_reset_email
+from app.tasks.review import NOTIFY_REVIEW
 from app.worker.celery_app import celery_app
 
 
@@ -144,6 +145,19 @@ def get_reset_mailer() -> Callable[[str, str], None]:
 
 
 ResetMailerDep = Annotated[Callable[[str, str], None], Depends(get_reset_mailer)]
+
+
+def send_review_notice_in_background(result_id: str) -> None:
+    """Уведомление владельцу фото о заключении агронома — в очередь Celery."""
+    celery_app.send_task(NOTIFY_REVIEW, args=(result_id,))
+
+
+def get_review_notifier() -> Callable[[str], None]:
+    """В тестах подменяется через dependency_overrides: Redis не нужен."""
+    return send_review_notice_in_background
+
+
+ReviewNotifierDep = Annotated[Callable[[str], None], Depends(get_review_notifier)]
 
 
 def get_open_meteo(request: Request, settings: SettingsDep) -> OpenMeteoClient:

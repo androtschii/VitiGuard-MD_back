@@ -509,3 +509,227 @@ def test_agronomist_review_queue(client: TestClient, run_sql: RunSql) -> None:
     # Заключение агроном может отозвать
     assert client.delete(f"{url}/review", headers=agronomist).status_code == 204
     assert client.get(queue, headers=agronomist).json()["total"] == 2
+
+
+# Уведомление владельцу фото о заключении агронома
+
+
+class FakeTelegram:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.sent: list[tuple[int, str]] = []
+
+    async def send_message(self, chat_id: int, text: str, **_: Any) -> None:
+        if self.fail:
+            raise RuntimeError("Telegram недоступен")
+        self.sent.append((chat_id, text))
+
+
+def notify(
+    client: TestClient,
+    result_id: str,
+    telegram: Any = None,
+    send: Any = None,
+    vapid: bool = False,
+) -> dict[str, int]:
+    import asyncio
+
+    from pydantic import SecretStr
+
+    from app.db.session import create_engine, create_session_factory
+    from app.services.review_notify import notify_review
+
+    settings: Settings = client.app.state.settings  # type: ignore[attr-defined]
+    if vapid:
+        settings = settings.model_copy(
+            update={"vapid_public_key": "p", "vapid_private_key": SecretStr("k")}
+        )
+
+    async def run() -> dict[str, int]:
+        engine = create_engine(settings)
+        try:
+            async with create_session_factory(engine)() as session:
+                kwargs = {} if send is None else {"send": send}
+                return await notify_review(
+                    session, settings, telegram, uuid.UUID(result_id), **kwargs
+                )
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(run())
+
+
+@pytest.mark.integration
+def test_review_of_someone_elses_photo_notifies_owner(
+    client: TestClient, run_sql: RunSql
+) -> None:
+    grower = login(client)
+    saved = diagnose(client, grower, save="true")
+    agronomist = login_agronomist(client, run_sql)
+    notices: list[str] = client.app.state.review_notices  # type: ignore[attr-defined]
+    url = f"/api/v1/diagnoses/{saved['id']}/review"
+
+    assert (
+        client.put(url, headers=agronomist, json={"disease": "esca"}).status_code == 200
+    )
+    assert notices == [saved["id"]]
+    # Отзыв заключения и проверка своего фото уведомлений не шлют
+    assert client.delete(url, headers=agronomist).status_code == 204
+    own = diagnose(client, agronomist, save="true")
+    own_url = f"/api/v1/diagnoses/{own['id']}/review"
+    client.put(own_url, headers=agronomist, json={"disease": "healthy"})
+    assert notices == [saved["id"]]
+
+
+@pytest.mark.integration
+def test_review_notice_goes_to_telegram_and_push(
+    client: TestClient, run_sql: RunSql
+) -> None:
+    from app.services.web_push import PushRejected
+
+    grower = login(client)
+    saved = diagnose(client, grower, save="true")
+    agronomist = login_agronomist(client, run_sql)
+    client.put(
+        f"/api/v1/diagnoses/{saved['id']}/review",
+        headers=agronomist,
+        json={"disease": "downy_mildew", "comment": "Пятна снизу листа"},
+    )
+    run_sql(
+        "UPDATE users SET telegram_chat_id = 777 "
+        f"WHERE email = '{CREDENTIALS['email']}'"
+    )
+    for endpoint in ("ok", "gone", "broken"):
+        client.post(
+            "/api/v1/push/subscriptions",
+            headers=grower,
+            json={
+                "endpoint": f"https://push.example.org/{endpoint}",
+                "keys": {"p256dh": "key", "auth": "secret"},
+            },
+        )
+    pushed: list[str] = []
+
+    def send(subscription: Any, payload: str, _: Settings) -> None:
+        if subscription.endpoint.endswith("gone"):
+            raise PushRejected(gone=True)
+        if subscription.endpoint.endswith("broken"):
+            raise PushRejected(gone=False)
+        pushed.append(payload)
+
+    telegram = FakeTelegram()
+    sent = notify(client, saved["id"], telegram, send, vapid=True)
+
+    assert sent == {"telegram": 1, "push": 1}
+    chat_id, text = telegram.sent[0]
+    assert chat_id == 777
+    assert "Агроном проверил ваш снимок" in text
+    assert "милдью" in text
+    assert "Комментарий: Пятна снизу листа" in text
+    assert '"url": "/history"' in pushed[0]
+    endpoints = {row[0] for row in run_sql("SELECT endpoint FROM push_subscriptions")}
+    assert endpoints == {
+        "https://push.example.org/ok",
+        "https://push.example.org/broken",
+    }
+
+    # Telegram недоступен — push всё равно уходит; без VAPID push пропускается
+    failing = FakeTelegram(fail=True)
+    assert notify(client, saved["id"], failing, send, vapid=True) == {
+        "telegram": 0,
+        "push": 1,
+    }
+    assert notify(client, saved["id"], None, send) == {"telegram": 0, "push": 0}
+
+
+@pytest.mark.integration
+def test_review_notice_skips_missing_withdrawn_and_inactive(
+    client: TestClient, run_sql: RunSql
+) -> None:
+    grower = login(client)
+    saved = diagnose(client, grower, save="true")
+    agronomist = login_agronomist(client, run_sql)
+    telegram = FakeTelegram()
+    run_sql(
+        "UPDATE users SET telegram_chat_id = 777 "
+        f"WHERE email = '{CREDENTIALS['email']}'"
+    )
+    nothing = {"telegram": 0, "push": 0}
+
+    assert notify(client, str(uuid.uuid4()), telegram) == nothing
+    # Заключения нет (не дано или отозвано, пока задача ждала очереди)
+    assert notify(client, saved["id"], telegram) == nothing
+    client.put(
+        f"/api/v1/diagnoses/{saved['id']}/review",
+        headers=agronomist,
+        json={"disease": "healthy"},
+    )
+    run_sql(
+        f"UPDATE users SET is_active = false WHERE email = '{CREDENTIALS['email']}'"
+    )
+    assert notify(client, saved["id"], telegram) == nothing
+    assert telegram.sent == []
+
+
+def test_review_task_runs_with_and_without_telegram(
+    migrated_database_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pydantic import SecretStr
+
+    from app.tasks import review as review_tasks
+
+    seen: list[tuple[bool, uuid.UUID]] = []
+
+    async def fake_notify(
+        _session: Any, _settings: Any, telegram: Any, result_id: uuid.UUID
+    ) -> dict[str, int]:
+        seen.append((telegram is not None, result_id))
+        return {"telegram": 0, "push": 0}
+
+    monkeypatch.setattr(review_tasks, "notify_review", fake_notify)
+    base = Settings(
+        _env_file=None,
+        environment="test",
+        database_url=migrated_database_url,  # type: ignore[arg-type]
+    )
+    result_id = uuid.uuid4()
+    for token in (SecretStr("123:token"), None):
+        settings = base.model_copy(update={"telegram_bot_token": token})
+        monkeypatch.setattr(review_tasks, "get_settings", lambda s=settings: s)
+        assert review_tasks.notify_review_task(str(result_id)) == {
+            "telegram": 0,
+            "push": 0,
+        }
+
+    assert seen == [(True, result_id), (False, result_id)]
+
+
+def test_review_notice_is_queued_in_celery(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.api import deps
+    from app.tasks.review import NOTIFY_REVIEW
+    from app.worker.celery_app import celery_app
+
+    queued: list[tuple[str, tuple[str, ...]]] = []
+    monkeypatch.setattr(
+        celery_app, "send_task", lambda name, args: queued.append((name, args))
+    )
+
+    deps.get_review_notifier()("result-id")
+
+    assert queued == [(NOTIFY_REVIEW, ("result-id",))]
+
+
+def test_review_text_without_comment() -> None:
+    from datetime import UTC, datetime
+    from types import SimpleNamespace
+
+    from app.services.review_notify import review_text
+
+    result: Any = SimpleNamespace(
+        expert_class="powdery_mildew",
+        expert_comment=None,
+        image=SimpleNamespace(created_at=datetime(2026, 7, 3, 22, 30, tzinfo=UTC)),
+    )
+
+    # 22:30 UTC — уже 4 июля в Кишинёве
+    assert review_text(result) == "Агроном проверил ваш снимок от 04.07: оидиум."

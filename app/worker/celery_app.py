@@ -13,6 +13,7 @@ TASK_MODULES = [
     "app.tasks.diagnosis",
     "app.tasks.mail",
     "app.tasks.osm",
+    "app.tasks.review",
     "app.tasks.risk",
     "app.tasks.satellite",
     "app.tasks.telegram",

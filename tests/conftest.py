@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from testcontainers.community.postgres import PostgresContainer
 from testcontainers.community.redis import RedisContainer
 
+from app.api.deps import get_review_notifier
 from app.core.config import Settings
 from app.main import create_app
 
@@ -157,5 +158,12 @@ def api_client(
     with TestClient(create_app(settings)) as client:
         # Свой кэш у каждого теста: данные в базе тесты меняют напрямую SQL
         client.app.state.cache = MemoryCache()  # type: ignore[attr-defined]
+        # Уведомления о заключении агронома не уходят в Celery: тест читает
+        # список идентификаторов из app.state.review_notices
+        notices: list[str] = []
+        client.app.state.review_notices = notices  # type: ignore[attr-defined]
+        client.app.dependency_overrides[get_review_notifier] = (  # type: ignore[attr-defined]
+            lambda: notices.append
+        )
         yield client
     run_sql("TRUNCATE users CASCADE")

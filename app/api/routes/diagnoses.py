@@ -5,7 +5,13 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Query, Response, status
 from fastapi.concurrency import run_in_threadpool
 
-from app.api.deps import AgronomistDep, CurrentUserDep, SessionDep, StorageDep
+from app.api.deps import (
+    AgronomistDep,
+    CurrentUserDep,
+    ReviewNotifierDep,
+    SessionDep,
+    StorageDep,
+)
 from app.core.errors import NotFoundError
 from app.models.diagnosis import DiseaseResult
 from app.models.user import User, UserRole
@@ -223,14 +229,19 @@ async def review_diagnosis(
     data: ReviewUpdate,
     user: AgronomistDep,
     session: SessionDep,
+    notify: ReviewNotifierDep,
 ) -> DiagnosisRecordRead:
     repository = DiagnosisRepository(session)
     result = await repository.get_any(diagnosis_id)
+    owner_id = result.image.owner_id
     result.expert_class = data.disease
     result.expert_comment = data.comment
     result.reviewed_by_id = user.id
     result.reviewed_at = datetime.now(UTC)
     await session.commit()
+    # Владелец узнаёт о заключении сразу; своё фото агроном проверил сам
+    if owner_id != user.id:
+        notify(str(diagnosis_id))
     return to_record(await repository.get_any(diagnosis_id), with_owner=True)
 
 

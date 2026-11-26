@@ -52,6 +52,25 @@ def test_demo_login_opens_session_of_role(
     assert (me["email"], me["role"]) == ("agronom@vitiguard.md", "agronomist")
 
 
+def test_through_public_tunnel_only_grower_demo(
+    api_client: TestClient, run_sql: RunSql
+) -> None:
+    enable(api_client)
+    demo_account(api_client, run_sql, "agronom@vitiguard.md", "agronomist")
+    demo_account(api_client, run_sql, "fermer@vitiguard.md", "user")
+    tunnel = {"Cf-Connecting-Ip": "203.0.113.7"}
+
+    # Агроном и администратор видят чужие данные: снаружи их демо-входа нет
+    refused = api_client.post(URL, json={"role": "agronomist"}, headers=tunnel)
+    assert refused.status_code == 403
+    assert "локальном стенде" in refused.json()["detail"]
+    assert (
+        api_client.post(URL, json={"role": "user"}, headers=tunnel).status_code == 200
+    )
+    # На локальном адресе — все роли, как раньше
+    assert api_client.post(URL, json={"role": "agronomist"}).status_code == 200
+
+
 def test_demo_login_needs_account_with_that_role(
     api_client: TestClient, run_sql: RunSql
 ) -> None:

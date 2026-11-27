@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 from memory_storage import MemoryStorage
 
 from app.models.enums import Disease, Fungicide, RiskLevel
-from app.services.diagnosis_history import overlay_key
+from app.services.diagnosis_history import overlay_key, thumb_key
 from app.services.risk import local_today
 
 pytestmark = pytest.mark.integration
@@ -71,6 +71,7 @@ def test_delete_account_success(api_client: TestClient, run_sql: RunSql) -> None
     img1_key = f"{user_1_id}/{img1_id}.jpg"
     diag1_id = str(uuid.uuid4())
     storage.put(img1_key, b"img1", "image/jpeg")
+    storage.put(thumb_key(img1_key), b"thumb1", "image/jpeg")
     storage.put(overlay_key(img1_key, "heatmap"), b"heat1", "image/png")
     storage.put(overlay_key(img1_key, "lesion"), b"lesion1", "image/png")
 
@@ -110,7 +111,7 @@ def test_delete_account_success(api_client: TestClient, run_sql: RunSql) -> None
         f"VALUES ('{fn_id}', '{v1_id}', '2026-06-01', 'Заметка', '{fn_key}', 'image/jpeg')"
     )
 
-    assert len(storage.files) == 6
+    assert len(storage.files) == 7
 
     # Удаляем аккаунт user 1
     delete_resp = api_client.request(
@@ -138,6 +139,7 @@ def test_delete_account_success(api_client: TestClient, run_sql: RunSql) -> None
 
     # Файлы user 1 удалены из хранилища, файл user 2 остался
     assert img1_key not in storage.files
+    assert thumb_key(img1_key) not in storage.files
     assert overlay_key(img1_key, "heatmap") not in storage.files
     assert overlay_key(img1_key, "lesion") not in storage.files
     assert vc_key not in storage.files

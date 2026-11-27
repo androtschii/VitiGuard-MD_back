@@ -20,6 +20,7 @@ from app.schemas.diagnosis import (
     DiagnosisQuery,
     DiagnosisRecordRead,
     DiseaseProbability,
+    ImageSize,
     LocationRead,
     Overlay,
     ReviewQueueQuery,
@@ -28,7 +29,11 @@ from app.schemas.diagnosis import (
 )
 from app.schemas.errors import ErrorResponse
 from app.schemas.pagination import Page
-from app.services.diagnosis_history import overlay_key
+from app.services.diagnosis_history import (
+    get_or_create_thumbnail,
+    overlay_key,
+    thumb_key,
+)
 
 # История проверок по фото (pr-053): журнал предсказаний пользователя — для
 # галереи на сайте и для будущего дообучения модели
@@ -156,13 +161,22 @@ async def diagnosis_image(
     user: CurrentUserDep,
     session: SessionDep,
     storage: StorageDep,
+    size: Annotated[
+        ImageSize,
+        Query(description="Размер фото: full (оригинал) или thumb (миниатюра)"),
+    ] = "full",
 ) -> Response:
     result = await visible(DiagnosisRepository(session), user, diagnosis_id)
-    data = await run_in_threadpool(storage.get, result.image.storage_key)
+    if size == "thumb":
+        data = await get_or_create_thumbnail(storage, result.image.storage_key)
+        media_type = "image/jpeg"
+    else:
+        data = await run_in_threadpool(storage.get, result.image.storage_key)
+        media_type = result.image.content_type
     # Фото проверки не меняется: браузер может держать его в кэше
     return Response(
         data,
-        media_type=result.image.content_type,
+        media_type=media_type,
         headers={"Cache-Control": "private, max-age=86400"},
     )
 
@@ -185,7 +199,12 @@ async def delete_diagnosis(
     # Фото удаляется вместе со всеми его проверками (каскад в базе)
     await session.delete(image)
     await session.commit()
-    for file_key in (key, overlay_key(key, "heatmap"), overlay_key(key, "lesion")):
+    for file_key in (
+        key,
+        thumb_key(key),
+        overlay_key(key, "heatmap"),
+        overlay_key(key, "lesion"),
+    ):
         await run_in_threadpool(storage.delete, file_key)
 
 

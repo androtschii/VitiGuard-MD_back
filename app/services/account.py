@@ -23,7 +23,7 @@ from app.models.vineyard import Vineyard
 from app.repositories.vineyard import VineyardRepository
 from app.schemas.user import UserDelete
 from app.services.auth import INVALID_CREDENTIALS
-from app.services.diagnosis_history import overlay_key
+from app.services.diagnosis_history import overlay_key, thumb_key
 
 logger = structlog.get_logger(__name__)
 
@@ -68,7 +68,14 @@ async def delete_account(
     ).all()
     file_keys: list[str] = []
     for key in leaf_keys:
-        file_keys.extend((key, overlay_key(key, "heatmap"), overlay_key(key, "lesion")))
+        file_keys.extend(
+            (
+                key,
+                thumb_key(key),
+                overlay_key(key, "heatmap"),
+                overlay_key(key, "lesion"),
+            )
+        )
 
     vine_check_keys = (
         await session.scalars(

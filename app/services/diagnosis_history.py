@@ -1,10 +1,12 @@
 import base64
+import io
 import uuid
 
 from fastapi.concurrency import run_in_threadpool
-from PIL import Image
+from PIL import Image, ImageOps
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.errors import NotFoundError
 from app.integrations.object_storage import Storage
 from app.ml.overlays import PNG_DATA_URL
 from app.models.diagnosis import DiseaseResult, LeafImage
@@ -14,6 +16,8 @@ from app.schemas.diagnosis import DiagnosisRead, VineDetectionRead
 
 EXTENSIONS = {"JPEG": "jpg", "PNG": "png", "WEBP": "webp"}
 CONTENT_TYPES = {"jpg": "image/jpeg", "png": "image/png", "webp": "image/webp"}
+THUMB_SIDE = 320
+THUMB_QUALITY = 82
 
 
 def storage_key(owner_id: uuid.UUID, image_id: uuid.UUID, leaf: Image.Image) -> str:
@@ -25,6 +29,43 @@ def storage_key(owner_id: uuid.UUID, image_id: uuid.UUID, leaf: Image.Image) -> 
 def overlay_key(photo_key: str, overlay: str) -> str:
     # Наложения лежат рядом с фото: <владелец>/<фото>.heatmap.png
     return f"{photo_key.rsplit('.', 1)[0]}.{overlay}.png"
+
+
+def thumb_key(photo_key: str) -> str:
+    # Миниатюра лежит рядом с фото: <владелец>/<фото>.thumb.jpg
+    return f"{photo_key.rsplit('.', 1)[0]}.thumb.jpg"
+
+
+def make_thumbnail(data: bytes) -> bytes:
+    """Уменьшает снимок до длинной стороны 320 px с сохранением пропорций,
+    переводит в RGB с учётом EXIF-ориентации и сохраняет в JPEG качества 82."""
+    with Image.open(io.BytesIO(data)) as source:
+        img: Image.Image = ImageOps.exif_transpose(source)
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+        width, height = img.size
+        if width >= height:
+            new_width = THUMB_SIDE
+            new_height = max(1, round(height * THUMB_SIDE / width))
+        else:
+            new_height = THUMB_SIDE
+            new_width = max(1, round(width * THUMB_SIDE / height))
+        resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        buffer = io.BytesIO()
+        resized.save(buffer, "JPEG", quality=THUMB_QUALITY)
+        return buffer.getvalue()
+
+
+async def get_or_create_thumbnail(storage: Storage, photo_key: str) -> bytes:
+    """Возвращает готовую миниатюру из хранилища или создаёт её при первом обращении."""
+    key = thumb_key(photo_key)
+    try:
+        return await run_in_threadpool(storage.get, key)
+    except NotFoundError:
+        full_data = await run_in_threadpool(storage.get, photo_key)
+        thumb_data = await run_in_threadpool(make_thumbnail, full_data)
+        await run_in_threadpool(storage.put, key, thumb_data, "image/jpeg")
+        return thumb_data
 
 
 def png_bytes(data_url: str) -> bytes:

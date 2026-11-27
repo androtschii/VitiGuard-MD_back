@@ -8,6 +8,7 @@ from app.schemas.base import EntityResponse, RequestSchema, ResponseSchema
 from app.schemas.pagination import PageParams
 
 Overlay = Literal["heatmap", "lesion"]
+ImageSize = Literal["full", "thumb"]
 
 
 class DiseaseProbability(ResponseSchema):

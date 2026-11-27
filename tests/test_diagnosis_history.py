@@ -15,7 +15,13 @@ from app.core.config import Settings
 from app.ml.overlays import PNG_DATA_URL
 from app.models.diagnosis import DiseaseResult, LeafImage
 from app.schemas.diagnosis import DiagnosisRead, DiseaseProbability, LesionRead
-from app.services.diagnosis_history import overlay_key, save_diagnosis, storage_key
+from app.services.diagnosis_history import (
+    make_thumbnail,
+    overlay_key,
+    save_diagnosis,
+    storage_key,
+    thumb_key,
+)
 
 RunSql = Callable[[str], list[tuple[object, ...]]]
 CREDENTIALS = {"email": "grower@example.md", "password": "secret123"}
@@ -58,13 +64,16 @@ def client(
 
 
 def diagnose(
-    client: TestClient, headers: dict[str, str], **params: str
+    client: TestClient,
+    headers: dict[str, str],
+    image: bytes | None = None,
+    **params: str,
 ) -> dict[str, Any]:
     response = client.post(
         "/api/v1/ai/diagnose",
         headers=headers,
         params=params,
-        files={"image": ("leaf.jpg", photo((255, 0, 0)), "image/jpeg")},
+        files={"image": ("leaf.jpg", image or photo((255, 0, 0)), "image/jpeg")},
     )
     body: dict[str, Any] = {"status": response.status_code, **response.json()}
     return body
@@ -733,3 +742,125 @@ def test_review_text_without_comment() -> None:
 
     # 22:30 UTC — уже 4 июля в Кишинёве
     assert review_text(result) == "Агроном проверил ваш снимок от 04.07: оидиум."
+
+
+@pytest.mark.integration
+def test_diagnosis_image_thumbnails(client: TestClient, storage: MemoryStorage) -> None:
+    headers = login(client)
+    large_photo = photo((255, 0, 0), size=(640, 480))
+    saved = diagnose(client, headers, image=large_photo, save="true")
+    diag_id = saved["id"]
+
+    # size=full и без параметра — как раньше отдаёт полноразмерное фото
+    resp_default = client.get(f"/api/v1/diagnoses/{diag_id}/image", headers=headers)
+    assert resp_default.status_code == 200
+    assert resp_default.headers["content-type"] == "image/jpeg"
+    assert resp_default.headers["cache-control"] == "private, max-age=86400"
+    assert Image.open(io.BytesIO(resp_default.content)).size == (640, 480)
+
+    resp_full = client.get(
+        f"/api/v1/diagnoses/{diag_id}/image?size=full", headers=headers
+    )
+    assert resp_full.status_code == 200
+    assert resp_full.headers["content-type"] == "image/jpeg"
+    assert resp_full.headers["cache-control"] == "private, max-age=86400"
+    assert resp_full.content == resp_default.content
+
+    # До запроса миниатюры в хранилище только оригинал
+    photo_key = next(k for k in storage.files if not k.endswith(".png"))
+    expected_thumb_key = thumb_key(photo_key)
+    assert expected_thumb_key not in storage.files
+
+    # Первый запрос size=thumb: генерирует миниатюру и сохраняет в хранилище
+    resp_thumb = client.get(
+        f"/api/v1/diagnoses/{diag_id}/image?size=thumb", headers=headers
+    )
+    assert resp_thumb.status_code == 200
+    assert resp_thumb.headers["content-type"] == "image/jpeg"
+    assert resp_thumb.headers["cache-control"] == "private, max-age=86400"
+
+    thumb_img = Image.open(io.BytesIO(resp_thumb.content))
+    assert thumb_img.format == "JPEG"
+    assert max(thumb_img.size) == 320
+    assert thumb_img.size == (320, 240)
+    assert len(resp_thumb.content) <= len(resp_full.content)
+
+    # Миниатюра появилась в хранилище
+    assert expected_thumb_key in storage.files
+    assert storage.files[expected_thumb_key] == (resp_thumb.content, "image/jpeg")
+
+    # Второй запрос берёт готовую миниатюру из хранилища
+    storage.files[expected_thumb_key] = (b"cached_thumb", "image/jpeg")
+    resp_cached = client.get(
+        f"/api/v1/diagnoses/{diag_id}/image?size=thumb", headers=headers
+    )
+    assert resp_cached.status_code == 200
+    assert resp_cached.content == b"cached_thumb"
+
+    # Неверное значение size — 422
+    assert (
+        client.get(
+            f"/api/v1/diagnoses/{diag_id}/image?size=invalid", headers=headers
+        ).status_code
+        == 422
+    )
+
+    # Чужая проверка — 404, как у полного фото
+    stranger = login(client, "neighbour@example.md")
+    assert (
+        client.get(
+            f"/api/v1/diagnoses/{diag_id}/image?size=thumb", headers=stranger
+        ).status_code
+        == 404
+    )
+    assert (
+        client.get(
+            f"/api/v1/diagnoses/{diag_id}/image?size=full", headers=stranger
+        ).status_code
+        == 404
+    )
+
+    # Удаление проверки удаляет и миниатюру
+    storage.files[expected_thumb_key] = (resp_thumb.content, "image/jpeg")
+    assert expected_thumb_key in storage.files
+    del_resp = client.delete(f"/api/v1/diagnoses/{diag_id}", headers=headers)
+    assert del_resp.status_code == 204
+    assert expected_thumb_key not in storage.files
+    assert photo_key not in storage.files
+
+
+def test_thumb_key() -> None:
+    assert thumb_key("user/photo.jpg") == "user/photo.thumb.jpg"
+    assert thumb_key("user/photo.png") == "user/photo.thumb.jpg"
+    assert thumb_key("user/nested/photo.webp") == "user/nested/photo.thumb.jpg"
+
+
+def test_make_thumbnail_exif_and_rgba() -> None:
+    from PIL import ExifTags
+
+    # Вертикальная ориентация с EXIF (orientation 6: повернуть на 90 градусов)
+    raw = Image.new("RGB", (640, 480), (0, 128, 0))
+    exif = Image.Exif()
+    exif[ExifTags.Base.Orientation] = 6
+    buf = io.BytesIO()
+    raw.save(buf, "JPEG", exif=exif)
+
+    thumb_bytes = make_thumbnail(buf.getvalue())
+    thumb_img = Image.open(io.BytesIO(thumb_bytes))
+    assert thumb_img.format == "JPEG"
+    assert thumb_img.mode == "RGB"
+    # Исходный 640x480 повернулся в 480x640, длинная сторона 640 уменьшилась до 320
+    assert thumb_img.size == (240, 320)
+    assert max(thumb_img.size) == 320
+
+    # Прозрачный RGBA PNG конвертируется в RGB JPEG
+    rgba = Image.new("RGBA", (500, 250), (200, 50, 50, 128))
+    rgba_buf = io.BytesIO()
+    rgba.save(rgba_buf, "PNG")
+
+    thumb_rgba = make_thumbnail(rgba_buf.getvalue())
+    thumb_rgba_img = Image.open(io.BytesIO(thumb_rgba))
+    assert thumb_rgba_img.format == "JPEG"
+    assert thumb_rgba_img.mode == "RGB"
+    assert thumb_rgba_img.size == (320, 160)
+    assert max(thumb_rgba_img.size) == 320
